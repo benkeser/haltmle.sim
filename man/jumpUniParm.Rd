@@ -9,7 +9,7 @@ jumpUniParm(x, njumpLower = 1, njumpUpper = 8, jumpLower = -4,
   length = njump + 1)) })
 }
 \description{
-Generate parameters for \code{jumpUni}. Here jumpLoc is a function that takes x and njump as input and outputs 
+Generate parameters for \code{jumpUni}. Here jumpLoc is a function that takes x and njump as input and outputs
 the locations of jumps. By contrast, when jumpLoc is fed into jumpUni, it is just a vector
 of numbers. See source code for how exactly it works.
 }

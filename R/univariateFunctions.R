@@ -1,8 +1,8 @@
-#' linUni 
-#' 
+#' linUni
+#'
 #' Simulate a linear univariate relationship
-#' 
-#' @param x A vector 
+#'
+#' @param x A vector
 #' @param coef A numeric (supplied by \code{linUniParm})
 #'
 #' @return \code{coef*x}
@@ -14,7 +14,7 @@ linUni <- function(x, coef){
 }
 
 #' linUniParm
-#' 
+#'
 #' Draw random coefficient for linear univariate relationship
 #' @export
 linUniParm <- function(coefLower = -10, coefUpper = 10, ...){
@@ -36,7 +36,7 @@ linSplineUni <- function(x, nKnot, knotLoc, slopes){
 
 #' linSplineUniParm
 #' @export
-linSplineUniParm <- function(x, slopeLower = -10, slopeUpper = 10, 
+linSplineUniParm <- function(x, slopeLower = -10, slopeUpper = 10,
                              nKnotLower = 1, nKnotUpper = 5,
                              quantLower = 0.05, quantUpper = 0.95){
 	nKnot <- round(runif(1, nKnotLower - 0.5, nKnotUpper + 0.5))
@@ -74,10 +74,10 @@ cubicSplineUniParm <- function(x, mainLower = -0.5, mainUpper = 0.5,
 
 
 #' polyUni
-#' 
+#'
 #' Simulate a polynomial univariate relationship
-#' 
-#' @param x A vector 
+#'
+#' @param x A vector
 #' @param npoly A numeric indicating the number of polynomial terms to simulate
 #' @param coef A vector indicating the coefficient for each polynomial term
 #' @param deg A vector indicating the degree of each polynomial term
@@ -98,26 +98,26 @@ polyUni <- function(x, npoly, coef, deg){
 }
 
 #' polyUniParm
-#' 
+#'
 #' Draw random coefficient for polynomial relationship univariate relationship.
-#' See source code for distributions. 
-#' 
+#' See source code for distributions.
+#'
 #' @export
 
 polyUniParm <- function(npolyLower = 1, npolyUpper = 4, coefLower = -3, coefUpper = 3,
                         degLower = 1, degUpper = 4, ...){
-	npoly <- round(runif(1, npolyLower - 0.5, npolyUpper + 0.5))
+	npoly <- sample(npolyLower:npolyUpper, 1)
 	coef <- runif(npoly, coefLower, coefUpper)
-	deg <- round(runif(npoly, 0.5, 3.5))
+	deg <- sample(1:4, npoly, replace = TRUE)
 	return(list(npoly = npoly, coef = coef, deg = deg))
 }
 
 
 #' sinUni
-#' 
+#'
 #' Simulate a sinusoidal univariate relationship
-#' 
-#' @param x A vector 
+#'
+#' @param x A vector
 #' @param p The periodicity of the sin function
 #' @param amp The amplitude of the sin function
 #'
@@ -129,9 +129,9 @@ sinUni <- function(x, p, amp){
 }
 
 #' sinUniParm
-#' 
+#'
 #' Draw random periodicity and amplitude for sinusoidal relationship univariate relationship.
-#' See source code for distributions. 
+#' See source code for distributions.
 #' @export
 sinUniParm <- function(pLower = -4, pUpper = 4, ampLower = -4, ampUpper = 4, ...){
 	p <- runif(1, pLower, pUpper)
@@ -140,15 +140,15 @@ sinUniParm <- function(pLower = -4, pUpper = 4, ampLower = -4, ampUpper = 4, ...
 }
 
 #' jumpUni
-#' 
+#'
 #' Simulate a jump function univariate relationship
-#' 
-#' @param x A vector 
+#'
+#' @param x A vector
 #' @param njump The number of jumps the function takes
 #' @param jumpLoc A vector of the locations of those jumps
 #' @param jumpVal A vector of length njump indicating the value of the function at each jump
 #'
-#' @return The value of the jump function. 
+#' @return The value of the jump function.
 #' @export
 
 jumpUni <- function(x, njump, jumpLoc, jumpVal){
@@ -160,17 +160,17 @@ jumpUni <- function(x, njump, jumpLoc, jumpVal){
 	return(tmp)
 }
 
-#' jumpUniParm 
-#' 
-#' Generate parameters for \code{jumpUni}. Here jumpLoc is a function that takes x and njump as input and outputs 
+#' jumpUniParm
+#'
+#' Generate parameters for \code{jumpUni}. Here jumpLoc is a function that takes x and njump as input and outputs
 #' the locations of jumps. By contrast, when jumpLoc is fed into jumpUni, it is just a vector
-#' of numbers. See source code for how exactly it works. 
+#' of numbers. See source code for how exactly it works.
 #' @export
 
-jumpUniParm <- function(x, njumpLower = 1, njumpUpper = 8, 
+jumpUniParm <- function(x, njumpLower = 1, njumpUpper = 8,
                         jumpLower = -4, jumpUpper = 4,
-                        jumpLoc = function(x,njump){ 
-                        	quantile(x, seq(0,1,length=njump+1)) 
+                        jumpLoc = function(x,njump){
+                        	quantile(x, seq(0,1,length=njump+1))
                         }){
 	njump <- round(runif(1, njumpLower - 0.5, njumpUpper + 0.5))
 	jumpL <- do.call("jumpLoc", args = list(x = x, njump = njump))
@@ -181,7 +181,7 @@ jumpUniParm <- function(x, njumpLower = 1, njumpUpper = 8,
 }
 
 #' qGammaUni
-#' 
+#'
 #' Simulate a gamma cdf relationship with expit(x)
 #' @param x A vector
 #' @param coef The coefficient in front of the gamma cdf
@@ -193,11 +193,11 @@ qGammaUni <- function(x, coef, a, b, ...){
 }
 
 #' qGammaUniParm
-#' 
-#' Generate parameters for \code{qGammaUni}. 
+#'
+#' Generate parameters for \code{qGammaUni}.
 #' @export
-#' 
-qGammaUniParm <- function(coefLower = -4, coefUpper = 4, aLower = 0.25, aUpper = 7, 
+#'
+qGammaUniParm <- function(coefLower = -4, coefUpper = 4, aLower = 0.25, aUpper = 7,
                           bLower = 0.25, bUpper = 7,...){
 	coef <- runif(1, coefLower, coefUpper)
 	a <- runif(1, aLower, aUpper)
@@ -206,23 +206,23 @@ qGammaUniParm <- function(coefLower = -4, coefUpper = 4, aLower = 0.25, aUpper =
 }
 
 #' dNormUni
-#' 
+#'
 #' Simulate a normal pdf relationship with x
 #' @param x A vector
 #' @param coef The coefficient in front of the normal pdf
 #' @param mu The mean of the normal pdf
 #' @param sig The sd of the normal pdf
-#' 
+#'
 #' @export
 dNormUni <- function(x, coef, mu, sig){
 	return(coef*dnorm(x, mu, sig))
 }
 
 #' dNormUniParm
-#' 
+#'
 #' Generate parameters for \code{dNormUni}
 #' @export
-dNormUniParm <- function(...,coefLower = -4, coefUpper = 4, 
+dNormUniParm <- function(...,coefLower = -4, coefUpper = 4,
                          muLower=-5, muUpper=5, sigLower=0.25, sigUpper=4){
 	coef <- runif(1, coefLower, coefUpper)
 	mu <- runif(1, muLower, muUpper)
@@ -230,8 +230,8 @@ dNormUniParm <- function(...,coefLower = -4, coefUpper = 4,
 	return(list(coef = coef, mu = mu, sig = sig))
 }
 
-#' pLogisUni 
-#' 
+#' pLogisUni
+#'
 #' Simulate an expit relationship with x
 #' @param x A vector
 #' @param coef The coefficient in front of the normal pdf
@@ -242,13 +242,13 @@ pLogisUni <- function(x, coef, mult, loc, scale){
 }
 
 #' pLogisUniParm
-#' 
+#'
 #' Parameters for \code{pLogisUni}
 #' @export
-#' 
-pLogisUniParm <- function(...,coefLower=-4, coefUpper=4, 
+#'
+pLogisUniParm <- function(...,coefLower=-4, coefUpper=4,
                           multLower=-4, multUpper=4,
-                          locLower = -4, locUpper = 4, 
+                          locLower = -4, locUpper = 4,
                           scaleLower = 0.25, scaleUpper = 4){
 	coef <- runif(1, coefLower, coefUpper)
 	mult <- runif(1, multLower, multUpper)
@@ -257,8 +257,8 @@ pLogisUniParm <- function(...,coefLower=-4, coefUpper=4,
 	return(list(coef = coef, mult = mult, loc = loc, scale = scale))
 }
 
-#' dNormMixUni 
-#' 
+#' dNormMixUni
+#'
 #' Simulate a mixture of normal pdfs relationship with x
 #' @param x A vector
 #' @param coef1 Multiplier in front of first pdf
@@ -273,11 +273,11 @@ dNormMixUni <- function(x, coef1, coef2, mu1, mu2, sig1, sig2){
 }
 
 #' dNormMixUniParm
-#' 
+#'
 #' Generate parameters for \code{dNormMixUni}
 #' @export
-dNormMixUniParm <- function(...,coef1Lower = -4, coef1Upper = 4, 
-                            coef2Lower = -4, coef2Upper = 4, 
+dNormMixUniParm <- function(...,coef1Lower = -4, coef1Upper = 4,
+                            coef2Lower = -4, coef2Upper = 4,
                             mu1Lower = -10, mu1Upper = 10,
                             mu2Lower = -10, mu2Upper = 10,
                             sig1Lower = 0.5, sig1Upper = 4,

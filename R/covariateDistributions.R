@@ -1,13 +1,13 @@
 
 #' uniformW
-#' 
+#'
 #' Draw from uniform(lower, upper) distribution
 #' @export
 uniformW <- function(n, lower, upper,...){
 	return(runif(n, lower, upper))
 }
 #' uniformWParm
-#' 
+#'
 #' Generate parameters for \code{uniform}
 #' @export
 
@@ -19,14 +19,14 @@ uniformWParm <- function(lowerLower = -10, lowerUpper = 0,
 }
 
 #' bernoulliW
-#' 
+#'
 #' Draw from Bernoulli(p)
 #' @export
 bernoulliW <- function(n,p,...){
 	return(rbinom(n,1,p))
 }
 #' bernoulliParm
-#' 
+#'
 #' Generate parameters for \code{bernoulli}
 #' @export
 bernoulliWParm <- function(pLower = 0.1, pUpper = 0.9,...){
@@ -34,30 +34,30 @@ bernoulliWParm <- function(pLower = 0.1, pUpper = 0.9,...){
 }
 
 #' binomialW
-#' 
+#'
 #' Draw from binomial(num, p)
 #' @export
 binomialW <- function(n,num,p,...){
 	return(rbinom(n,num,p))
 }
 #' binomialWParm
-#' 
+#'
 #' Generate parameters for \code{binomial}
 #' @export
 binomialWParm <- function(pLower = 0.1, pUpper = 0.9,
                           numLower = 2, numUpper = 20,...){
 	return(list(p = runif(1, pLower, pUpper),
-	            num = round(runif(1, numLower - 0.5, numUpper + 0.5))))
+	            num = sample(numLower:numUpper, 1)))
 }
 #' normalW
-#' 
+#'
 #' Draw from normal(mean,sd)
 #' @export
 normalW <- function(n,mean,sd,...){
 	return(rnorm(n,mean,sd))
 }
 #' normalWParm
-#' 
+#'
 #' Generate parameters for \code{normal}
 #' @export
 
@@ -67,7 +67,7 @@ normalWParm <- function(meanLower = -2, meanUpper = 2,
 	            sd = runif(1, sdLower, sdUpper)))
 }
 #' gammaW
-#' 
+#'
 #' Draw from gamma(a,b) distribution
 #' @export
 gammaW <- function(n,a,b,...){
@@ -83,23 +83,23 @@ gammaWParm <- function(aLower = 0.5, aUpper = 2.5,
 	       b = runif(1, bLower, bUpper)))
 }
 
-#' normalWCor 
-#' 
+#' normalWCor
+#'
 #' Draw normal variate with mean equal to sum of the selected variables
 #' that it is correlated with
 #' @export
 normalWCor <- function(n,W=NULL,sd,whichCorr,...){
 	if(!is.null(W)){
-		return(rnorm(n,.rowSums(W),sd))		
+		return(rnorm(n,.rowSums(W),sd))
 	}else{
 		return(rnorm(n,0,sd))
 	}
 }
 #' normalWCorParm
-#' 
+#'
 #' Generate parameters for \code{normalCor} (smaller SD = more correlation)
 #' @export
-normalWCorParm <- function(W=NULL, sdLower = 0.25, sdUpper = 4, 
+normalWCorParm <- function(W=NULL, sdLower = 0.25, sdUpper = 4,
                            nCorrLower = 1, nCorrUpper = ncol(W)){
 	if(!is.null(W)){
 		# randomly choose number of correlated variables
@@ -114,19 +114,19 @@ normalWCorParm <- function(W=NULL, sdLower = 0.25, sdUpper = 4,
 }
 
 #' bernoulliWCor
-#' 
+#'
 #' Draw bernoulli variable with prob x/r (to induce correlation)
 #' @export
 bernoulliWCor <- function(n,W = NULL,r,whichCorr,...){
 	if(!is.null(W)){
-		return(rbinom(n,1,plogis(.rowSums(W)/r)))		
+		return(rbinom(n,1,plogis(.rowSums(W)/r)))
 	}else{
 		return(rbinom(n,1,plogis(0)))
 	}
 }
 
 #' bernoulliWCorParm
-#' 
+#'
 #' Generate parameters for \code{bernoulliCorParm} (smaller r = more correlation)
 #' @export
 
@@ -134,9 +134,9 @@ bernoulliWCorParm <- function(W = NULL, rLower = -2, rUpper = 2,
                            nCorrLower = 1, nCorrUpper = ncol(W)){
 	if(!is.null(W)){
 		# randomly choose number of correlated variables
-		nCorr <- round(runif(1, nCorrLower - 0.5, nCorrUpper + 0.5))
+		nCorr <- sample(nCorrLower:nCorrUpper, 1)
 		# randomly choose which variables its correlated with
-		whichCorr <- sample(1:ncol(W), nCorr)		
+		whichCorr <- sample(1:ncol(W), nCorr)
 	}else{
 		whichCorr <- NA
 	}
@@ -145,12 +145,12 @@ bernoulliWCorParm <- function(W = NULL, rLower = -2, rUpper = 2,
 }
 
 #' uniformWCor
-#' 
+#'
 #' Draw variable that is x + uniform error (to induce correlation)
 #' @export
 uniformWCor <- function(n,W = NULL,lower,upper,whichCorr,...){
 	if(!is.null(W)){
-		return(.rowSums(W) + runif(n,lower,upper))		
+		return(.rowSums(W) + runif(n,lower,upper))
 	}else{
 		return(runif(n,lower,upper))
 	}
@@ -205,7 +205,7 @@ normalPointMassW <- function(n, mean, sd, p, ...){
 }
 
 #' normalPointMassWParm
-#' 
+#'
 #' Generate parameters for \code{normal}
 #' @export
 normalPointMassWParm <- function(meanLower = -2, meanUpper = 2,
@@ -215,10 +215,10 @@ normalPointMassWParm <- function(meanLower = -2, meanUpper = 2,
 	            sd = runif(1, sdLower, sdUpper),
 	            p = runif(1, pLower, pUpper)))
 }
-# distributions that are binomial but have some fractional values 
+# distributions that are binomial but have some fractional values
 # in between integers
 #' binomialFracW
-#' 
+#'
 #' Draw from binomial(num, p)
 #' @export
 binomialFracW <- function(n,num,p,pFrac,...){
@@ -230,7 +230,7 @@ binomialFracW <- function(n,num,p,pFrac,...){
 }
 
 #' binomialWParm
-#' 
+#'
 #' Generate parameters for \code{binomial}
 #' @export
 binomialFracWParm <- function(pLower = 0.1, pUpper = 0.9,
@@ -242,7 +242,7 @@ binomialFracWParm <- function(pLower = 0.1, pUpper = 0.9,
 }
 
 #' .rowSums
-#' 
+#'
 #' rowSums to handle one dimension properly
 .rowSums <- function(x){
 	if(dim(x)[2] == 1){
