@@ -22,9 +22,9 @@ scp cent_sin.R sce_sin.sh dbenkese@rhino.fhcrc.org:~/haltmle.sim
 ssh dbenkese@rhino.fhcrc.org
 cd haltmle.sim
 # random mechanisms
-./sce.sh ./cent.R redos_b12_V4
+./sce.sh ./cent.R rdg_n5000_v2
 # kang and schafer
-./sce_ks.sh ./cent_ks.R ks_new_v1
+./sce_ks.sh ./cent_ks.R ks_mod_v2
 # sin wave
 ./sce_sin.sh ./cent_sin.R sin_redos_v2
 
@@ -70,13 +70,13 @@ R
 # scp results from rhino to local machine
 #-----------------------------------------
 # from rhino
-cd haltmle.sim/out
-scp allOut.RData dbenkese@snail.fhcrc.org:~/haltmle.sim
+cd ~/haltmle.sim/out
+scp allOut_ks.RData dbenkese@snail.fhcrc.org:~/haltmle.sim
 	# enter snail password
  	# ctrl + shift + t to open up new term
 # scp to snail
 cd ~/Dropbox/R/haltmle.sim/results
-scp dbenkese@snail.fhcrc.org:~/haltmle.sim/allOut.RData . 
+scp dbenkese@snail.fhcrc.org:~/haltmle.sim/allOut_ks.RData . 
 
 #-----------------------------------------
 # misc commands 
