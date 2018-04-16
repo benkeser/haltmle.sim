@@ -107,6 +107,8 @@ remakeRandomData <- function(n, object, setA = NULL, setW = NULL, ...){
 			}
 		}
 
+   	  logitg0 <- .8^object$its*logitg0 + .8^object$its*object$skewage
+
 		# correct for positivity violations
 		logitg0[plogis(logitg0) < object$minG0] <- qlogis(object$minG0)
 		logitg0[plogis(logitg0) > 1 - object$minG0] <- qlogis(1 - object$minG0)

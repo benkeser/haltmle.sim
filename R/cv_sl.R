@@ -588,7 +588,8 @@ get_dr_tmle <- function(W, A, Y, Q, g, folds, est_name, ...){
 
   dr_fit <- drtmle(W = W, A = A, Y = Y, Qn = Qn, gn = gn,
                    a_0 = c(0,1), maxIter = 5, cvFolds = cvFolds, 
-                   glm_Qr = "gn + I(gn^2)", glm_gr = "Qn + I(Qn^2)",
+                   glm_Qr = "gn + I(gn^2) + I(gn^3)", 
+                   glm_gr = "Qn + I(Qn^2) + I(Qn^3)",
                    verbose = FALSE)
 
   ci_dr_fit <- ci(dr_fit, contrast = c(-1,1))

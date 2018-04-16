@@ -24,7 +24,7 @@ cd haltmle.sim
 # random mechanisms
 ./sce.sh ./cent.R rdg_n5000_v2
 # kang and schafer
-./sce_ks.sh ./cent_ks.R ks_mod_v2
+./sce_ks.sh ./cent_ks.R bound4_v1
 # sin wave
 ./sce_sin.sh ./cent_sin.R sin_redos_v2
 

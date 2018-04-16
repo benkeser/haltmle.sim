@@ -37,10 +37,10 @@ library(hal9001, lib.loc = "/home/dbenkese/R/x86_64-unknown-linux-gnu-library/3.
 library(drtmle, lib.loc = "/home/dbenkese/R/x86_64-unknown-linux-gnu-library/3.2")
 library(SuperLearner)
 # full parm
-ns <- c(200,1000,5000)
+ns <- c(250, 500, 1000, 2000)
 # ns <- c(200)
 bigB <- 1000
-four_period <- c(0.5, 1, 5, 10)
+four_period <- c(0.5, 5, 10)
 two_period <- c(0.5, 10)
 
 # # simulation parameters
@@ -129,12 +129,12 @@ if (args[1] == 'run') {
     set.seed(parm$seed[i])
     dat <- make_sin(n=parm$n[i], Qp = parm$Q_period[i], gp = parm$g_period[i])
 
-    algo <- "SL.hal9001"
+    algo <- "SL.hal9002"
         
     # fit super learner with all algorithms
     out <- get_all_ates(Y = dat$Y, A = dat$A, W = dat$W, compute_superlearner = FALSE,
                         V = 6, learners = algo, remove_learner = NULL,
-                        which_dr_tmle = c("SL.hal9001", "cv_SL.hal9001"))    
+                        which_dr_tmle = c("SL.hal9002", "cv_SL.hal9002"))    
 
     save(out, file=paste0(saveDir,"sin_n=",parm$n[i],"_seed=",parm$seed[i],
                           "_Qp=",parm$Q_period[i],"_gp=",parm$g_period[i],".RData"))
@@ -206,8 +206,9 @@ if (args[1] == 'merge') {
                onestep = onestep_rslt,
                drtmle = drtmle_rslt)
   save(rslt, file = "~/haltmle.sim/out/allOut_sin.RData")
+}
 
-
+if(FALSE){
 # locally
   load("~/Dropbox/R/haltmle.sim/results/allOut_sin.RData")  
 
@@ -424,8 +425,6 @@ if (args[1] == 'merge') {
   make_coverage_plot(rslt[[4]], col_name = "cv_SL.hal9001.cov_cv_ci", xvar = "Qp", est_lab = "HAL + CV-DR TMLE")
   make_coverage_plot(rslt[[4]], col_name = "cv_SL.hal9001.cov_cv_ci", xvar = "gp", est_lab = "HAL + CV-DR TMLE")
   dev.off()
-
-
 
 }
 

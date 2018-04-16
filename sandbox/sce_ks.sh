@@ -10,7 +10,7 @@ module load R/3.2.0
 
 ##################### Change these constants ##############################
 
-ANALYSIS='ks_mod_v2'      # change for every analysis you run (2nd arg)
+ANALYSIS='bound4_v1'      # change for every analysis you run (2nd arg)
 MAILDOM='@fhcrc.org'   # your email domain (for receiving error messages)
 MAXARRAYSIZE=1000          # set to 0 if you are not using slurm job arrays
 MYSCRATCH="./scratch"  # location of your persistent scratch dir

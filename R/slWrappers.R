@@ -1,4 +1,30 @@
 #' @export
+SL.hal9002 <- function (Y, X, newX = NULL, degrees = NULL, family = stats::gaussian(), 
+    obsWeights = rep(1, length(Y)), ...) 
+{
+    hal_out <- fit_hal(Y = Y, X = X, degrees = degrees, yolo = FALSE,
+                       standardize = FALSE, fit_type = "glmnet",
+                       lambda =  exp(seq(3, -50, length = 2000)))
+    if (!is.null(newX)) {
+        pred <- stats::predict(object = hal_out, new_data = newX)
+    }
+    else {
+        pred <- stats::predict(object = hal_out, new_data = X)
+    }
+    fit <- list(object = hal_out)
+    out <- list(pred = pred, fit = fit)
+    class(out$fit) <- "SL.hal9001"
+    return(out)
+}
+
+
+#' @export
+SL.earth.cv <- function(..., nfold = 5){
+  out <- SL.earth(..., nfold = nfold)
+  return(out)
+}
+
+#' @export
 #' 
 SL.dbarts.mod = function(Y, X, newX, family, obsWeights, id,
                      sigest = NA,

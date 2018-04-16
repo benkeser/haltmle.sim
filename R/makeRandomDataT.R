@@ -86,7 +86,8 @@
 #' \item{divideLogitG0}{A numeric of the scaling factor for the propensity}
 #' @export
 makeRandomDataT <- function(n,
-                           maxD,
+                           maxD = 2,
+                           D = NULL, 
                            minObsA = 30,
                            func.distW = c("uniformW","normalW","bernoulliW","binomialW","gammaW",
                                           "normalWCor","bernoulliWCor","uniformWCor", "gammaPointMassW",
@@ -128,12 +129,15 @@ makeRandomDataT <- function(n,
                            minR2 = 0.01, maxR2 = 0.99, pos = .005, skewing = c(-1,1),
                            ...) {
   # draw random number of covariates
-  D <- sample(1:maxD, 1)
+  if(!is.null(maxD)){
+    D <- sample(1:maxD, 1)
+  }
+  
   #----------------------------------------------------------------------
   # Simulate W
   #----------------------------------------------------------------------
   # initialize empties
-  N = 1e6
+  N = 1e5
   W <- matrix(nrow = N, ncol = D)
   distW <- vector(mode = "list", length = D)
   for(d in 1:D){

@@ -37,7 +37,7 @@ library(hal9001, lib.loc = "/home/dbenkese/R/x86_64-unknown-linux-gnu-library/3.
 library(drtmle, lib.loc = "/home/dbenkese/R/x86_64-unknown-linux-gnu-library/3.2")
 library(SuperLearner)
 # full parm
-ns <- c(200, 1000)
+ns <- c(250, 500, 1000, 2000)
 bigB <- 1000
 
 
@@ -68,6 +68,24 @@ if (args[1] == 'listsize') {
   # cat(1)
 }
 
+make_ks_mod <- function(n){
+  z1 <- truncnorm::rtruncnorm(n, a = 0.5, b = 2.5, mean = 1.5)
+  z2 <- truncnorm::rtruncnorm(n, a = -4, b = 4)
+  z3 <- truncnorm::rtruncnorm(n, a = -4, b = 4)
+  z4 <- truncnorm::rtruncnorm(n, a = -4, b = 4)
+
+  w1 <- exp(z1/2)
+  w2 <- z2/(1+exp(z1)) + 10
+  w3 <- (z1*z3/25 + 0.6)^3
+  w4 <- (z2 + z4 + 20)^2
+
+  Y <- 210 + 27.4*z1 + 13.7*z2 + 13.7*z3 + 13.7*z4 + rnorm(n)
+  g0 <- plogis(-z1 + 0.5*z2 - 0.25*z3 - 0.1*z4)
+  A <- rbinom(n, 1, g0)
+  return(list(Y = Y, A = A, W = data.frame(W1 = w1, W2 = w2, W3 = w3, W4 = w4),
+              Z = data.frame(Z1 = z1, Z2 = z2, Z3 = z3, Z4 = z4)))
+}
+
 make_ks <- function(n){
   z1 <- rnorm(n)
   z2 <- rnorm(n)
@@ -82,24 +100,8 @@ make_ks <- function(n){
   Y <- 210 + 27.4*z1 + 13.7*z2 + 13.7*z3 + 13.7*z4 + rnorm(n)
   g0 <- plogis(-z1 + 0.5*z2 - 0.25*z3 - 0.1*z4)
   A <- rbinom(n, 1, g0)
-  return(list(Y = Y, A = A, W = data.frame(W1 = w1, W2 = w2, W3 = w3, W4 = w4)))
-}
-
-make_ks_mod <- function(n){
-  z1 <- rnorm(n)
-  z2 <- rnorm(n)
-  z3 <- rnorm(n)
-  z4 <- rnorm(n)
-
-  w1 <- exp(z1/2)
-  w2 <- z2/(1+exp(z1)) + 10
-  w3 <- (z1*z3/25 + 0.6)^3
-  w4 <- (z2 + z4 + 20)^2
-
-  Y <- 210 + 27.4*z1 + 13.7*z2 + 13.7*z3 + 13.7*z4 + rnorm(n)
-  g0 <- plogis(-z1 + 0.5*z2 - 0.25*z3 - 0.1*z4)
-  A <- rbinom(n, 1, g0)
-  return(list(Y = Y, A = A, W = data.frame(W1 = z1, W2 = z2, W3 = z3, W4 = z4)))
+  return(list(Y = Y, A = A, W = data.frame(W1 = w1, W2 = w2, W3 = w3, W4 = w4),
+              Z = data.frame(Z1 = z1, Z2 = z2, Z3 = z3, Z4 = z4)))
 }
 
 get_var_eif <- function(n = 1e6){
@@ -119,6 +121,7 @@ get_var_eif <- function(n = 1e6){
   EIF <- (2*A - 1)/ifelse(A==1, g0, 1-g0) * (Y - Q0)
   return(var(EIF))
 }
+
 # execute prepare job ##################
 if (args[1] == 'prepare') {
 
@@ -140,9 +143,11 @@ if (args[1] == 'run') {
     print(parm[i,])
 
     set.seed(parm$seed[i])
-    dat <- make_ks_mod(n=parm$n[i])
+    dat <- make_ks(n=parm$n[i])
 
-    algo <- c("SL.hal9001",
+    algo <- c("SL.mean",
+              "SL.hal9002",
+              "SL.earth.cv",
               "SL.glm",
               "SL.bayesglm", 
               "SL.earth",
@@ -151,18 +156,17 @@ if (args[1] == 'run') {
               "SL.dbarts.mod",
               "SL.gbm.caretMod",
               "SL.rf.caretMod",
-              "SL.rpart.caretMod", 
-              "SL.mean",
-              "SL.kernelKnn")
+              "SL.mean")
     # algo <- c("SL.glm","SL.bayesglm","SL.gam")
     # fit super learner with all algorithms
     set.seed(12314)
     out <- get_all_ates(Y = dat$Y, A = dat$A, W = dat$W, gtol = 0.025, 
-                        V = 6, learners = algo, remove_learner = "SL.hal9001") #,
+                        V = 6, learners = algo, remove_learner = "SL.hal9002",
+                        which_dr_tmle = c("full_sl", "cv_full_sl", "SL.hal9002", "cv_SL.hal9002")) #,
                         # which_dr_tmle = "full_sl")
 
 
-    save(out, file=paste0(saveDir,"ks_mod_n=",parm$n[i],"_seed=",parm$seed[i],
+    save(out, file=paste0(saveDir,"ksfinalmod_n=",parm$n[i],"_seed=",parm$seed[i],
                           ".RData"))
     }
 }
@@ -174,76 +178,88 @@ if (args[1] == 'merge') {
   #   return(mean_rslt)
   # }
 
-  # format_result <- function(out){
-  #   tmle_os_list <- lapply(out, function(l){
-  #     # browser()
-  #     cv_est <- grepl("cv_", names(l))
-  #     for(i in 1:length(l)){
-  #       l[[i]] <- data.frame(as.list(l[[i]]))
-  #     }
-  #     for(i in 1:length(l)){
-  #       if(cv_est[i]){
-  #         l[[i]]$cv_ci_l <- l[[i]]$est - qnorm(0.975)*l[[i]]$se
-  #         l[[i]]$cv_ci_u <- l[[i]]$est + qnorm(0.975)*l[[i]]$se
-  #         l[[i]]$cov_cv_ci <- l[[i]]$cv_ci_l < truth & l[[i]]$cv_ci_u > truth
-  #       }else{
-  #         l[[i]]$ci_l <- l[[i]]$est - qnorm(0.975)*l[[i]]$se
-  #         l[[i]]$ci_u <- l[[i]]$est + qnorm(0.975)*l[[i]]$se
-  #         l[[i]]$cov_ci <- l[[i]]$ci_l < truth & l[[i]]$ci_u > truth
-  #         l[[i]]$cv_ci_l <- l[[i]]$est - qnorm(0.975)*l[[i+1]]$se
-  #         l[[i]]$cv_ci_u <- l[[i]]$est + qnorm(0.975)*l[[i+1]]$se
-  #         l[[i]]$cov_cv_ci <- l[[i]]$cv_ci_l < truth & l[[i]]$cv_ci_u > truth
-  #       }
-  #     }
-  #     return(l)
-  #   })
-  #   return(tmle_os_list)
-  # }
-  # truth <- 0
-  # all_files <- list.files("~/haltmle.sim/out")
-  # ks_files <- all_files[grepl("ks",all_files)]
-  # logistic_tmle_rslt <- matrix(nrow = length(ks_files), ncol = 182 + 1)
-  # linear_tmle_rslt <- matrix(nrow = length(ks_files), ncol = 182 + 1)
-  # onestep_rslt <- matrix(nrow = length(ks_files), ncol = 182 + 1)
-  # drtmle_rslt <- matrix(nrow = length(ks_files), ncol = 26 + 1)
-  # for(i in seq_along(ks_files)){
-  #   # get sample size
-  #   this_n <- as.numeric(strsplit(strsplit(ks_files[i], "_")[[1]][2], "n=")[[1]][2])
-  #   # load file
-  #   load(paste0("~/haltmle.sim/out/",ks_files[i]))
-  #   # format this file
-  #   tmp <- format_result(out)
-  #   # add results to rslt
-  #   logistic_tmle_rslt[i,] <- c(this_n, unlist(tmp[[1]]))
-  #   linear_tmle_rslt[i,] <- c(this_n,unlist(tmp[[2]]))
-  #   onestep_rslt[i,] <- c(this_n,unlist(tmp[[3]]))
-  #   drtmle_rslt[i,] <- c(this_n,unlist(tmp[[4]]))
-  # }
-  # col_names_1 <- c("n", names(unlist(tmp[[1]],use.names = TRUE)))
-  # col_names_2 <- c("n", names(unlist(tmp[[4]],use.names = TRUE)))
-  # logistic_tmle_rslt <- data.frame(logistic_tmle_rslt)
-  # colnames(logistic_tmle_rslt) <- col_names_1
-  # linear_tmle_rslt <- data.frame(linear_tmle_rslt)
-  # colnames(linear_tmle_rslt) <- col_names_1
-  # onestep_rslt <- data.frame(onestep_rslt)
-  # colnames(onestep_rslt) <- col_names_1
-  # drtmle_rslt <- data.frame(drtmle_rslt)
-  # colnames(drtmle_rslt) <- col_names_2
-  # rslt <- list(log_tmle = logistic_tmle_rslt,
-  #              lin_tmle = linear_tmle_rslt,
-  #              onestep = onestep_rslt,
-  #              drtmle = drtmle_rslt)
-  # save(rslt, file = "~/haltmle.sim/out/allOut_ks.RData")
-  # # # bias
-  # # by(logistic_tmle_rslt, logistic_tmle_rslt$n, function(x){
-  # #   colMeans(x[,c("full_sl.cov_ci","full_sl.cov_cv_ci","cv_full_sl.cov_cv_ci",
-  # #                 "SL.hal9001.cov_ci","SL.hal9001.cov_cv_ci","cv_SL.hal9001.cov_cv_ci"
-  # #                 )])
-  # # })
-  # # est <- "SL.rf.caretMod"
-  # # by(linear_tmle_rslt, logistic_tmle_rslt$n, function(x){
-  # #   colMeans(x[,paste0(c("","cv_"),est,".est")])
-  # # })
+  format_result <- function(out){
+    tmle_os_list <- lapply(out, function(l){
+      # browser()
+      cv_est <- grepl("cv_", names(l))
+      for(i in 1:length(l)){
+        l[[i]] <- data.frame(as.list(l[[i]]))
+      }
+      for(i in 1:length(l)){
+        if(cv_est[i]){
+          l[[i]]$cv_ci_l <- l[[i]]$est - qnorm(0.975)*l[[i]]$se
+          l[[i]]$cv_ci_u <- l[[i]]$est + qnorm(0.975)*l[[i]]$se
+          l[[i]]$cov_cv_ci <- l[[i]]$cv_ci_l < truth & l[[i]]$cv_ci_u > truth
+        }else{
+          l[[i]]$ci_l <- l[[i]]$est - qnorm(0.975)*l[[i]]$se
+          l[[i]]$ci_u <- l[[i]]$est + qnorm(0.975)*l[[i]]$se
+          l[[i]]$cov_ci <- l[[i]]$ci_l < truth & l[[i]]$ci_u > truth
+          l[[i]]$cv_ci_l <- l[[i]]$est - qnorm(0.975)*l[[i+1]]$se
+          l[[i]]$cv_ci_u <- l[[i]]$est + qnorm(0.975)*l[[i+1]]$se
+          l[[i]]$cov_cv_ci <- l[[i]]$cv_ci_l < truth & l[[i]]$cv_ci_u > truth
+        }
+      }
+      return(l)
+    })
+    return(tmle_os_list)
+  }
+  truth <- 0
+  all_files <- list.files("~/haltmle.sim/out")
+  ks_files <- all_files[grepl("ksfinalmod",all_files)]
+  logistic_tmle_rslt <- matrix(nrow = length(ks_files), ncol = 78 + 1)
+  linear_tmle_rslt <- matrix(nrow = length(ks_files), ncol = 78 + 1)
+  onestep_rslt <- matrix(nrow = length(ks_files), ncol = 78 + 1)
+  drtmle_rslt <- matrix(nrow = length(ks_files), ncol = 26 + 1)
+  for(i in seq_along(ks_files)){
+    # get sample size
+    # this_n <- as.numeric(strsplit(strsplit(ks_files[i], "_")[[1]][2], "n=")[[1]][2])
+    this_n <- as.numeric(strsplit(strsplit(ks_files[i], "_")[[1]][3], "n=")[[1]][2])
+    # load file
+    load(paste0("~/haltmle.sim/out/",ks_files[i]))
+      # format this file
+    tmp <- format_result(out)
+    # add results to rslt
+    logistic_tmle_rslt[i,] <- c(this_n, unlist(tmp[[1]]))
+    linear_tmle_rslt[i,] <- c(this_n,unlist(tmp[[2]]))
+    onestep_rslt[i,] <- c(this_n,unlist(tmp[[3]]))
+    drtmle_rslt[i,] <- c(this_n,unlist(tmp[[4]]))
+  }
+  col_names_1 <- c("n", names(unlist(tmp[[1]],use.names = TRUE)))
+  col_names_2 <- c("n", names(unlist(tmp[[4]],use.names = TRUE)))
+  logistic_tmle_rslt <- data.frame(logistic_tmle_rslt)
+  colnames(logistic_tmle_rslt) <- col_names_1
+  linear_tmle_rslt <- data.frame(linear_tmle_rslt)
+  colnames(linear_tmle_rslt) <- col_names_1
+  onestep_rslt <- data.frame(onestep_rslt)
+  colnames(onestep_rslt) <- col_names_1
+  drtmle_rslt <- data.frame(drtmle_rslt)
+  colnames(drtmle_rslt) <- col_names_2
+  rslt <- list(log_tmle = logistic_tmle_rslt,
+               lin_tmle = linear_tmle_rslt,
+               onestep = onestep_rslt,
+               drtmle = drtmle_rslt)
+  save(rslt, file = "~/haltmle.sim/out/allOut_finalmod.RData")
+  
+  # coverage
+  by(rslt$lin_tmle, rslt$lin_tmle$n, function(x){
+    colMeans(x[, grep("cov",colnames(x))
+             # c("full_sl.cov_ci","full_sl.cov_cv_ci","cv_full_sl.cov_cv_ci",
+             #      # "SL.rf.caretMod.cov_ci", "SL.glm.cov_ci",
+             #      "SL.hal9001.cov_ci","SL.hal9001.cov_cv_ci","cv_SL.hal9001.cov_cv_ci")
+             ])
+  })  
+
+  by(rslt$onestep, rslt$onestep$n, function(x){
+    return(colMeans(x[, grep(".est",colnames(x))] * sqrt(x$n)))
+  })
+
+
+
+  est <- "SL.rf.caretMod"
+
+  by(linear_tmle_rslt, logistic_tmle_rslt$n, function(x){
+    colMeans(x[,paste0(c("","cv_"),est,".est")])
+  })
 
 
 
