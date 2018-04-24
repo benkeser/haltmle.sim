@@ -650,6 +650,9 @@ get_all_ates <- function(Y, W, A, V = 5, learners,
 	onestep_ate <- mapply(Qbar = nuisance$Qbar, g = nuisance$g, get_onestep_ate,
 	                   MoreArgs = list(Y = Y, A = A, W = W), SIMPLIFY = FALSE)
 
+  # TO DO: ADD IPTW estimators and GCOMP?
+  # iptw <- 
+
 	# get standard errors
 	log_tmle_se <- mapply(Qbar = log_tmle, g = nuisance$g, ate = log_tmle_ate,
 	                      get_tmle_se, MoreArgs = list(Y = Y, A = A, W = W), 

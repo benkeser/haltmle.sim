@@ -1,10 +1,10 @@
-#-----------------------------------------
-# commands for scp'ing sce and cent over
+#----------------------------------------
+# commands for scpcP'ing sce and cent over
 #-----------------------------------------
 cd ~/Dropbox/R/haltmle.sim/sandbox
 # random mechanisms
 scp  cent.R sce.sh dbenkese@snail.fhcrc.org:~/haltmle.sim
-# kang and schafer
+# kang and schafers
 scp  cent_ks.R sce_ks.sh dbenkese@snail.fhcrc.org:~/haltmle.sim
 # sin wave
 scp  cent_sin.R sce_sin.sh dbenkese@snail.fhcrc.org:~/haltmle.sim
@@ -24,9 +24,12 @@ cd haltmle.sim
 # random mechanisms
 ./sce.sh ./cent.R rdg_n5000_v2
 # kang and schafer
-./sce_ks.sh ./cent_ks.R bound4_v1
+./sce_ks.sh ./cent_ks.R finalmod_v5
 # sin wave
-./sce_sin.sh ./cent_sin.R sin_redos_v2
+./sce_sin.sh ./cent_sin.R lastsin
+
+
+squeue -u dbenkese
 
 #-----------------------
 cd ~/Dropbox/R/haltmle.sim/sandbox

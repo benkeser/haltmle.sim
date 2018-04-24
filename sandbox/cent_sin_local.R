@@ -37,34 +37,34 @@ library(hal9001, lib.loc = "/home/dbenkese/R/x86_64-unknown-linux-gnu-library/3.
 library(drtmle, lib.loc = "/home/dbenkese/R/x86_64-unknown-linux-gnu-library/3.2")
 library(SuperLearner)
 # full parm
-# ns <- c(250, 500, 1000, 2000)
-# # ns <- c(200)
-# bigB <- 1000
-# four_period <- c(0.5, 5, 10)
-# two_period <- c(0.5, 10)
+ns <- c(250, 500, 1000, 2000)
+# ns <- c(200)
+bigB <- 1000
+four_period <- c(0.5, 5, 10)
+two_period <- c(0.5, 10)
 
-# # # simulation parameters
-# parm_Q <- expand.grid(seed=1:bigB,
-#                     n=ns,
-#                     Q_period = four_period,
-#                     g_period = two_period)
-# parm_g <- expand.grid(seed=1:bigB,
-#                     n=ns,
-#                     Q_period = two_period,
-#                     g_period = four_period)
-# parm_g <- parm_g[-which(parm_g$g_period == 0.5 | parm_g$g_period == 10), ]
+# # simulation parameters
+parm_Q <- expand.grid(seed=1:bigB,
+                    n=ns,
+                    Q_period = four_period,
+                    g_period = two_period)
+parm_g <- expand.grid(seed=1:bigB,
+                    n=ns,
+                    Q_period = two_period,
+                    g_period = four_period)
+parm_g <- parm_g[-which(parm_g$g_period == 0.5 | parm_g$g_period == 10), ]
 
-# parm <- rbind(parm_Q, parm_g)
-# colnames(parm)[3:4] <- c("Qp","gp")
+parm <- rbind(parm_Q, parm_g)
+colnames(parm)[3:4] <- c("Qp","gp")
 
-# redo_parm <- find_missing_files(tag = "sin",
-#                            # parm needs to be in same order as 
-#                            # file saves -- should make this more general...
-#                            parm = c("n", "seed", "Qp", "gp"),
-#                            full_parm = parm)
+redo_parm <- find_missing_files(tag = "sin",
+                           # parm needs to be in same order as 
+                           # file saves -- should make this more general...
+                           parm = c("n", "seed", "Qp", "gp"),
+                           full_parm = parm)
 
-# parm <- redo_parm
-# save(parm, file = "~/haltmle.sim/scratch/remain_sin_sims.RData")
+parm <- redo_parm
+save(parm, file = "~/haltmle.sim/scratch/remain_sin_sims.RData")
 load("~/haltmle.sim/scratch/remain_sin_sims.RData")
 names(parm)[3:4] <- c("Q_period","g_period")
 # directories to save in 
@@ -122,13 +122,14 @@ if (args[1] == 'run') {
               TASKID, "STEPSIZE:", STEPSIZE))
   for (i in (id+TASKID):(id+TASKID+STEPSIZE-1)) {
     print(paste(Sys.time(), "i:" , i))
-
     # load parameters
-
+    do.one <- function(i){
+    load("~/Dropbox/R/haltmle.sim/sandbox/remain_sin_sims.RData")
     print(parm[i,])
+    saveDir <- "~/Dropbox/R/haltmle.sim/sandbox/local_results"
 
     set.seed(parm$seed[i])
-    dat <- make_sin(n=parm$n[i], Qp = parm$Q_period[i], gp = parm$g_period[i])
+    dat <- make_sin(n=parm$n[i], Qp = parm$Qp[i], gp = parm$gp[i])
 
     algo <- "SL.hal9002"
         
@@ -138,7 +139,10 @@ if (args[1] == 'run') {
                         which_dr_tmle = c("SL.hal9002", "cv_SL.hal9002"))    
 
     save(out, file=paste0(saveDir,"sin_n=",parm$n[i],"_seed=",parm$seed[i],
-                          "_Qp=",parm$Q_period[i],"_gp=",parm$g_period[i],".RData"))
+                          "_Qp=",parm$Qp[i],"_gp=",parm$gp[i],".RData"))
+    }
+    
+
     }
 }
 
@@ -219,104 +223,27 @@ if(FALSE){
     mean_rslt <- ddply(est_rslt, .(n, Qp, gp), colMeans)
     return(mean_rslt)
   }
-  get_mse_rslt <- function(est_rslt){
-    mse_rslt <- ddply(est_rslt, .(n, Qp, gp), function(x){
-      apply(x, 2, function(y){ mean(y^2) })
-    })
-    return(mse_rslt)
-  }
-  # make MSE plot that shows high and low variation
-  make_mse_plot <- function(mse_rslt, col_name = "SL.hal9002.est", xvar = "Qp",
-                            n = 250, ylog = TRUE,
-                            colors1 = brewer.pal(n = 9, "Greens")[c(3,5,7)],
-                            colors2 = brewer.pal(n = 9, "Reds")[c(3,5,7)]){
+
+  
+  make_plot <- function(mean_rslt, col_name, xvar = "Qp"){
     cov_plot <- grepl("cov", col_name)
-    yl <- range(mse_rslt[,col_name])
-    plot(10,10, xlim = c(0, 10), ylim = yl, pch = "", xaxt = "n", yaxt = "n",
-         bty = "n", log = "y")
-    axis(side = 1); axis(side = 2)
+    if(cov_plot){
+      yl <- c(0.5, 1)
+    }else{
+      yl <- range(mean_rslt[,col_name])
+    }
+
+    plot(0, 0, xlim = c(0, 10), ylim = yl, pch = "")
     stratvar <- ifelse(xvar == "Qp", "gp", "Qp")
 
     ct <- 0
-    for(s in range(unique(mse_rslt[,stratvar]))){
+    for(n in unique(mean_rslt$n)){
       ct <- ct + 1
-      yvar <- mse_rslt[sqrt(mse_rslt$n) == n & mse_rslt[,stratvar] == s, col_name]
-      xvarp <- sqrt(mse_rslt[sqrt(mse_rslt$n) == n & mse_rslt[,stratvar] == s, xvar])
-      this_col <- if(ct ==1){ colors1 }else{ colors2 }
-      points(y = yvar, x = xvarp, col = this_col, pch = 19, type = "b")
+      yvar_low <- mean_rslt[mean_rslt$n == n & mean_rslt[,stratvar] == 10, col_name]
+      xvar_low <- mean_rslt[mean_rslt$n == n & mean_rslt[,stratvar] == 10, xvar]
+      points(y = yvar_low, x = xvar_low, pch = ct)
     }
-  }
-  library(RColorBrewer); library(plyr)
-  mse_rslt <- get_mse_rslt(rslt$log_tmle)
-  mean_rslt <- get_mean_rslt(rslt$log_tmle)
-  est_rslt <- rslt$log_tmle
-  make_mse_plot(mse_rslt)
-
-  col_name <- "SL.hal9002.est"
-  xvar <- "Qp"
-  n <- 250
-  colors1 = brewer.pal(n = 9, "Greens")[c(3,4,5)]
-  colors2 = brewer.pal(n = 9, "Reds")[c(3,4,5)]
-  ci_name <- "SL.hal9002.cov_ci"
-
-  make_one_density_and_coverage_plot <- function(est_rslt, mean_rslt, est_name, ci_name, xvar = "Qp",
-                                                 est_lab = "", n = 250,
-                                                 colors1 = brewer.pal(n = 9, "Greens")[c(3,5,7)],
-                                                 colors2 = brewer.pal(n = 9, "Reds")[c(3,5,7)]){
-    # first make a density plot
-    stratvar <- ifelse(xvar == "Qp", "gp", "Qp")
-    par(mar = c(4.1, 4.1, 1.1, 4.1))
-    ct <- 0
-    for(s in range(unique(mean_rslt[,stratvar]))){
-      ct <- ct + 1
-      if(stratvar == "gp"){
-        vic <- sapply(mean_rslt[mean_rslt[,stratvar] == s & mean_rslt$n == n, xvar], get_var_ic, n = 1e6, Qp = s)        
-      }else if(stratvar == "Qp"){
-        vic <- sapply(mean_rslt[mean_rslt[,stratvar] == s & mean_rslt$n == n, xvar], get_var_ic, n = 1e6, gp = s)                
-      }
-      this_col <- if(ct ==1){ colors1 }else{ colors2 }
-      i_ct <- 0
-      for(i in sort(unique(mean_rslt[,xvar]))){
-        i_ct <- i_ct + 1
-        yvar <- est_rslt[est_rslt$n == n & est_rslt[,stratvar] == s & est_rslt[,xvar] == i, col_name]
-        if(ct == 1 & i_ct == 1){
-          plot(density(sqrt(n)*yvar/sqrt(vic[i_ct])), col = this_col[i_ct], lwd = 2, ylim = c(0,0.7),
-                xlab = "", xlim = c(-4,4), bty = "n", main = "", ylab = "")
-        }else{
-          lines(density(sqrt(n)*yvar/sqrt(vic[i_ct])), col = this_col[i_ct], lwd = 2)
-        }
-      }
-    }
-    # add N(0,1)
-    x_seq <- seq(-4,4, length = 2000)
-    lines(x = x_seq, y = dnorm(x_seq), lty = 3, lwd = 2)
-
-    # now add coverage plot
-    par(new = TRUE)
-    plot(0,0, pch = "", xlim = c(0, 10), ylim = c(0,1), axes = FALSE,
-         bty = "n", ylab = "", xlab = "")
-    ct <- 0
-    for(s in range(unique(mean_rslt[,stratvar]))){
-      ct <- ct + 1
-      yvar <- mean_rslt[mean_rslt$n == n & mean_rslt[,stratvar] == s, ci_name]
-      xvarp <- mean_rslt[mean_rslt$n == n & mean_rslt[,stratvar] == s, xvar]
-      this_col <- if(ct ==1){ colors1 }else{ colors2 }
-      points(y = yvar, x = xvarp, col = this_col, pch = 19, type = "b")
-    }
-    axis(side = 4)
-    abline(lty = 3, h = 0.95)
-  }
-  get_var_ic <- function(n = 1e6, Qp, gp){
-    w1 <- runif(n, 0, 2*pi)
-    # variation norm = 0.8*Qp
-    Q0 <- 0.4*sin(Qp*w1) + 0.5 
-    # variation norm = 0.8*gp
-    g0 <- 0.4*sin(gp*w1) + 0.5
-
-    A <- rbinom(n ,1, g0)
-    Y <- rbinom(n, 1, Q0)
-    IC <- (2*A - 1) / ifelse(A==1, g0, 1-g0) * (Y - Q0)
-    return(var(IC))
+    abline(h = ifelse(cov_plot, 0.95, 0), lty = 3)
   }
 
   library(RColorBrewer)
@@ -388,29 +315,6 @@ if(FALSE){
       mtext(outer = TRUE, side = 2, expression("||"*bar(Q)[0]*"||"[v]*" = 16"), at = 0.275, cex = 0.75, line = 0.9)
     }
     mtext(outer = TRUE, side = 3, est_lab)
-  }
-
-
-  
-  make_plot <- function(mean_rslt, col_name, xvar = "Qp"){
-    cov_plot <- grepl("cov", col_name)
-    if(cov_plot){
-      yl <- c(0.5, 1)
-    }else{
-      yl <- range(mean_rslt[,col_name])
-    }
-
-    plot(0, 0, xlim = c(0, 10), ylim = yl, pch = "")
-    stratvar <- ifelse(xvar == "Qp", "gp", "Qp")
-
-    ct <- 0
-    for(n in unique(mean_rslt$n)){
-      ct <- ct + 1
-      yvar_low <- mean_rslt[mean_rslt$n == n & mean_rslt[,stratvar] == 10, col_name]
-      xvar_low <- mean_rslt[mean_rslt$n == n & mean_rslt[,stratvar] == 10, xvar]
-      points(y = yvar_low, x = xvar_low, pch = ct)
-    }
-    abline(h = ifelse(cov_plot, 0.95, 0), lty = 3)
   }
 
   # sinusoidal simulation results

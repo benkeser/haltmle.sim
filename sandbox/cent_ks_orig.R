@@ -37,7 +37,7 @@ library(hal9001, lib.loc = "/home/dbenkese/R/x86_64-unknown-linux-gnu-library/3.
 library(drtmle, lib.loc = "/home/dbenkese/R/x86_64-unknown-linux-gnu-library/3.2")
 library(SuperLearner)
 # library(truncnorm, lib.loc = "/home/dbenkese/R/x86_64-pc-linux-gnu-library/3.4")
-# full parm
+# # full parm
 # ns <- c(250, 500, 1000, 2000)
 # bigB <- 1000
 
@@ -50,9 +50,9 @@ library(SuperLearner)
 #                            # file saves -- should make this more general...
 #                            parm = c("n", "seed"),
 #                            full_parm = parm_values)
-# save(parm, file = "~/haltmle.sim/scratch/remain_ksfinalmod_sims.RData")
+# save(parm, file = "~/haltmle.sim/scratch/remain_ksfinalorig_sims.RData")
 
-load("~/haltmle.sim/scratch/remain_ksfinalmod_sims.RData")
+load("~/haltmle.sim/scratch/remain_ksfinalorig_sims.RData")
 
 # directories to save in 
 saveDir <- "~/haltmle.sim/out/"
@@ -141,7 +141,7 @@ if (args[1] == 'run') {
     print(parm[i,])
 
     set.seed(parm$seed[i])
-    dat <- make_ks_mod(n=parm$n[i])
+    dat <- make_ks(n=parm$n[i])
 
     algo <- c("SL.mean",
               "SL.hal9002",
@@ -163,7 +163,7 @@ if (args[1] == 'run') {
                         # which_dr_tmle = "full_sl")
 
 
-    save(out, file=paste0(saveDir,"ks_finalmod_n=",parm$n[i],"_seed=",parm$seed[i],
+    save(out, file=paste0(saveDir,"ksfinalmod_n=",parm$n[i],"_seed=",parm$seed[i],
                           ".RData"))
     }
 }

@@ -7,6 +7,8 @@ find_missing_files <- function(tag = "out",
                                folder = "~/haltmle.sim/out"){
 	all_files <- list.files(folder)
 	tag_files <- all_files[grepl(tag, all_files)]
+	# remove allOut files
+	tag_files <- tag_files[!grepl("allOut", tag_files)]
 	split_list <- sapply(tag_files,function(x){
 		strsplit(tools::file_path_sans_ext(x),"_") 
 		})
@@ -26,9 +28,9 @@ find_missing_files <- function(tag = "out",
 }
 
 
-# rename ks files
-# ks_files <- all_files[grepl("ks_out",all_files)]
+# # rename ks files
+# ks_files <- all_files[grepl("ks_finalorig",all_files)]
 # for(i in ks_files){
-# 	new_name <- paste0("ks", strsplit(i, "ks_out")[[1]][2])
+# 	new_name <- paste0("ksfinalorig", strsplit(i, "ks_finalorig")[[1]][2])
 # 	file.rename(paste0("~/haltmle.sim/out/",i), paste0("~/haltmle.sim/out/",new_name))
 # }
