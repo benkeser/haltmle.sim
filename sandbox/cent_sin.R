@@ -227,14 +227,19 @@ if(FALSE){
   }
   # make MSE plot that shows high and low variation
   make_mse_plot <- function(mse_rslt, col_name = "SL.hal9002.est", xvar = "Qp",
-                            n = 250, ylog = TRUE,
+                            n = 250, ylog = TRUE,y_axis_labels = TRUE, 
                             colors1 = brewer.pal(n = 9, "Greens")[c(3,5,7)],
-                            colors2 = brewer.pal(n = 9, "Reds")[c(3,5,7)]){
+                            colors2 = brewer.pal(n = 9, "Reds")[c(3,5,7)], ...){
     cov_plot <- grepl("cov", col_name)
     yl <- range(mse_rslt[,col_name])
+   if(xvar == "Qp"){
+        tit <- expression("||"*bar(Q)[0]*"||"[v])
+      }else{
+        tit <- expression("||"*g[0]*"||"[v])
+      }
     plot(10,10, xlim = c(0, 10), ylim = yl, pch = "", xaxt = "n", yaxt = "n",
-         bty = "n", log = "y")
-    axis(side = 1); axis(side = 2)
+         bty = "n", log = "y", xlab = tit, ...)
+    axis(side = 1); axis(side = 2, labels = y_axis_labels)
     stratvar <- ifelse(xvar == "Qp", "gp", "Qp")
 
     ct <- 0
@@ -245,12 +250,105 @@ if(FALSE){
       this_col <- if(ct ==1){ colors1 }else{ colors2 }
       points(y = yvar, x = xvarp, col = this_col, pch = 19, type = "b")
     }
+  }  
+
+  # make coverage plot that shows high and low variation
+  make_cov_plot <- function(mean_rslt, col_name = "SL.hal9002.cov_cv_ci", xvar = "Qp",
+                            n = 250, ylog = TRUE, y_axis_labels = TRUE, 
+                            colors1 = brewer.pal(n = 9, "Greens")[c(3,5,7)],
+                            colors2 = brewer.pal(n = 9, "Reds")[c(3,5,7)], ...){
+    cov_plot <- grepl("cov", col_name)
+     if(xvar == "Qp"){
+          tit <- expression("||"*bar(Q)[0]*"||"[v])
+        }else{
+          tit <- expression("||"*g[0]*"||"[v])
+        }
+    # yl <- range(mean_rslt[,col_name])
+    plot(10,10, xlim = c(0, 10), pch = "", xaxt = "n", yaxt = "n",
+         bty = "n", log = "y", xlab = tit, ...)
+    axis(side = 1); axis(side = 2, labels = y_axis_labels)
+    stratvar <- ifelse(xvar == "Qp", "gp", "Qp")
+
+    ct <- 0
+    for(s in range(unique(mean_rslt[,stratvar]))){
+      ct <- ct + 1
+      yvar <- mean_rslt[mean_rslt$n == n & mean_rslt[,stratvar] == s, col_name]
+      xvarp <- mean_rslt[mean_rslt$n == n & mean_rslt[,stratvar] == s, xvar]
+      this_col <- if(ct ==1){ colors1 }else{ colors2 }
+      points(y = yvar, x = xvarp, col = this_col, pch = 19, type = "b")
+    }
+    abline(h = 0.95, lty = 3)
   }
+
+  # make coverage plot that shows high and low variation
+  make_density_plot <- function(mean_rslt, est_rslt, est_name = "SL.hal9002.est", 
+                                xvar = "Qp",
+                            n = 250, ylog = TRUE,y_axis_labels = TRUE, 
+                            colors1 = brewer.pal(n = 9, "Greens")[c(3,5,7)],
+                            colors2 = brewer.pal(n = 9, "Reds")[c(3,5,7)], ...){
+    # first make a density plot
+    stratvar <- ifelse(xvar == "Qp", "gp", "Qp")
+    # par(mar = c(4.1, 4.1, 1.1, 4.1))
+    ct <- 0
+    for(s in range(unique(mean_rslt[,stratvar]))){
+      ct <- ct + 1
+      if(stratvar == "gp"){
+        vic <- sapply(mean_rslt[mean_rslt[,stratvar] == s & mean_rslt$n == n, xvar], get_var_ic, n = 1e6, Qp = s)        
+      }else if(stratvar == "Qp"){
+        vic <- sapply(mean_rslt[mean_rslt[,stratvar] == s & mean_rslt$n == n, xvar], get_var_ic, n = 1e6, gp = s)                
+      }
+      this_col <- if(ct ==1){ colors1 }else{ colors2 }
+      i_ct <- 0
+      for(i in sort(unique(mean_rslt[,xvar]))){
+        i_ct <- i_ct + 1
+        yvar <- est_rslt[est_rslt$n == n & est_rslt[,stratvar] == s & est_rslt[,xvar] == i, col_name]
+        if(ct == 1 & i_ct == 1){
+          plot(density(sqrt(n)*yvar/sqrt(vic[i_ct])), col = this_col[i_ct], lwd = 2, ylim = c(0,0.5),
+                xlab = expression(sqrt(n)*"("*psi[n] - psi[0]*") / "*sqrt("var(EIF)")), 
+                xlim = c(-4,4), bty = "n", main = "", xaxt = "n", yaxt = "n", ...)
+          axis(side = 1); axis(side = 2, labels = y_axis_labels)
+        }else{
+          lines(density(sqrt(n)*yvar/sqrt(vic[i_ct])), col = this_col[i_ct], lwd = 2)
+        }
+      }
+    }
+    # add N(0,1)
+    x_seq <- seq(-4,4, length = 2000)
+    lines(x = x_seq, y = dnorm(x_seq), lty = 3, lwd = 2)
+  }
+
+
   library(RColorBrewer); library(plyr)
   mse_rslt <- get_mse_rslt(rslt$log_tmle)
   mean_rslt <- get_mean_rslt(rslt$log_tmle)
   est_rslt <- rslt$log_tmle
-  make_mse_plot(mse_rslt)
+
+
+  make_plot_all_n <- function(xvar = "Qp",
+                              ns = c(250, 500, 1000, 2000)){
+    layout(matrix(1:12,nrow = 3))
+    par(mar = c(4.1, 0.6, 0.6, 0.6), 
+        oma = c(0, 4.1, 2.1, 0),
+        mgp = c(2, 0.5, 0))
+    for(n in ns){
+      make_mse_plot(mse_rslt, n = n, ylab = "",xvar = xvar,
+                    y_axis_labels = (n == ns[1]))
+      if(n == ns[1]){
+        mtext(outer = FALSE, line = 2.5, "MSE", side = 2, cex = 0.75)
+      }
+      mtext(outer = FALSE, line = 1, paste0("n = ", n), side = 3, cex = 0.75)
+      make_cov_plot(mean_rslt, ylim = c(0.7, 1), n = n, ylab = "",xvar = xvar,
+                    y_axis_labels = (n == ns[1]))
+      if(n == ns[1]){ 
+        mtext(outer = FALSE, line = 2.5, "Coverage", cex = 0.75, side = 2)
+      }
+      make_density_plot(mean_rslt, rslt$log_tmle, n = n, ylab ="",xvar = xvar,
+                        y_axis_labels = (n == ns[1]))
+      if(n == ns[1]){
+        mtext(outer = FALSE, line = 2.5, "Density", cex = 0.75, side = 2)
+      }
+    }
+  }
 
   col_name <- "SL.hal9002.est"
   xvar <- "Qp"
@@ -258,6 +356,18 @@ if(FALSE){
   colors1 = brewer.pal(n = 9, "Greens")[c(3,4,5)]
   colors2 = brewer.pal(n = 9, "Reds")[c(3,4,5)]
   ci_name <- "SL.hal9002.cov_ci"
+  get_var_ic <- function(n = 1e6, Qp, gp){
+    w1 <- runif(n, 0, 2*pi)
+    # variation norm = 0.8*Qp
+    Q0 <- 0.4*sin(Qp*w1) + 0.5 
+    # variation norm = 0.8*gp
+    g0 <- 0.4*sin(gp*w1) + 0.5
+
+    A <- rbinom(n ,1, g0)
+    Y <- rbinom(n, 1, Q0)
+    IC <- (2*A - 1) / ifelse(A==1, g0, 1-g0) * (Y - Q0)
+    return(var(IC))
+  }
 
   make_one_density_and_coverage_plot <- function(est_rslt, mean_rslt, est_name, ci_name, xvar = "Qp",
                                                  est_lab = "", n = 250,
@@ -305,18 +415,6 @@ if(FALSE){
     }
     axis(side = 4)
     abline(lty = 3, h = 0.95)
-  }
-  get_var_ic <- function(n = 1e6, Qp, gp){
-    w1 <- runif(n, 0, 2*pi)
-    # variation norm = 0.8*Qp
-    Q0 <- 0.4*sin(Qp*w1) + 0.5 
-    # variation norm = 0.8*gp
-    g0 <- 0.4*sin(gp*w1) + 0.5
-
-    A <- rbinom(n ,1, g0)
-    Y <- rbinom(n, 1, Q0)
-    IC <- (2*A - 1) / ifelse(A==1, g0, 1-g0) * (Y - Q0)
-    return(var(IC))
   }
 
   library(RColorBrewer)

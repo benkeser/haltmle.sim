@@ -38,12 +38,12 @@ library(drtmle, lib.loc = "/home/dbenkese/R/x86_64-unknown-linux-gnu-library/3.2
 library(SuperLearner)
 # library(truncnorm, lib.loc = "/home/dbenkese/R/x86_64-pc-linux-gnu-library/3.4")
 # full parm
-# ns <- c(250, 500, 1000, 2000)
-# bigB <- 1000
+ns <- c(250, 500, 1000, 2000)
+bigB <- 1000
 
-# # # # simulation parameters
-# parm_values <- expand.grid(seed=1:bigB,
-#                     n=ns)
+# # # simulation parameters
+parm_values <- expand.grid(seed=1:bigB,
+                    n=ns)
 
 # parm <- find_missing_files(tag = "ksfinalorig",
 #                            # parm needs to be in same order as 
@@ -52,7 +52,7 @@ library(SuperLearner)
 #                            full_parm = parm_values)
 # save(parm, file = "~/haltmle.sim/scratch/remain_ksfinalmod_sims.RData")
 
-load("~/haltmle.sim/scratch/remain_ksfinalmod_sims.RData")
+# load("~/haltmle.sim/scratch/remain_ksfinalmod_sims.RData")
 
 # directories to save in 
 saveDir <- "~/haltmle.sim/out/"
@@ -163,7 +163,7 @@ if (args[1] == 'run') {
                         # which_dr_tmle = "full_sl")
 
 
-    save(out, file=paste0(saveDir,"ks_finalmod_n=",parm$n[i],"_seed=",parm$seed[i],
+    save(out, file=paste0(saveDir,"ksmod_n=",parm$n[i],"_seed=",parm$seed[i],
                           ".RData"))
     }
 }
@@ -202,7 +202,7 @@ if (args[1] == 'merge') {
   }
   truth <- 0
   all_files <- list.files("~/haltmle.sim/out")
-  ks_files <- all_files[grepl("ksfinalorig",all_files)]
+  ks_files <- all_files[grepl("ksmod",all_files)]
   logistic_tmle_rslt <- matrix(nrow = length(ks_files), ncol = 143 + 1)
   linear_tmle_rslt <- matrix(nrow = length(ks_files), ncol = 143 + 1)
   onestep_rslt <- matrix(nrow = length(ks_files), ncol = 143 + 1)
@@ -244,7 +244,7 @@ if (args[1] == 'merge') {
                lin_tmle = linear_tmle_rslt,
                onestep = onestep_rslt,
                drtmle = drtmle_rslt)
-  save(rslt, file = "~/haltmle.sim/out/allOut_finalorig.RData")
+  save(rslt, file = "~/haltmle.sim/out/allOut_mod.RData")
   
   # coverage
   by(rslt$lin_tmle, rslt$lin_tmle$n, function(x){

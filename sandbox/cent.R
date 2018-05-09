@@ -105,7 +105,13 @@ if (args[1] == 'run') {
     dat <- haltmle.sim:::makeRandomData(n=parm$n[i], maxD = 8,
                                         minObsA = 30,
                                         minR2 = parm$range_R2[[i]][1],
-                                        maxR2 = parm$range_R2[[i]][2])
+                                        maxR2 = parm$range_R2[[i]][2])    
+
+    dat <- haltmle.sim:::makeRandomDataT(n=100, maxD = 1,
+                                        # minObsA = 30,
+                                        minR2 = 0.05,
+                                        maxR2 = 0.95)
+
     save(dat, file=paste0(scratchDir,"draw_n=",parm$n[i],"_seed=",parm$seed[i],
                           "_r2=",parm$range_R2[[i]][1],".RData"))
     print("data saved")
@@ -122,14 +128,25 @@ if (args[1] == 'run') {
               "SL.rpart.caretMod", 
               "SL.mean",
               "SL.kernelKnn")
-        
+    algo <- c("SL.glm","SL.hal9002")
     # fit super learner with all algorithms
     set.seed(parm$seed[i])
     dat$W <- data.frame(dat$W)
     colnames(dat$W) <- paste0("W",1:ncol(dat$W))
-
+    debug(estimate_nuisance)
+    debug(get_all_ates)
+    debug(get_ctmle_fit)
+    debug(predict_alllambda_SL.hal9002)
     out <- get_all_ates(Y = dat$Y$Y, A = dat$A$A, W = dat$W, 
-                        V = 6, learners = algo, remove_learner = "SL.hal9001")
+                        V = 4, learners = algo, 
+                        # remove_learner = "SL.hal9001",
+                        which_Match = algo,
+                        which_dr_tmle = algo,
+                        which_dr_iptw = algo,
+                        which_ctmle_g = "SL.hal9002")
+    
+
+    
 
     save(out, file=paste0(saveDir,"out_n=",parm$n[i],"_seed=",parm$seed[i],
                           "_r2=",parm$range_R2[[i]][1],".RData"))
@@ -234,21 +251,30 @@ if (args[1] == 'merge') {
     return(tmp)
   }
 
+  # for computing coverage (only cv confidence intervals)
+  summary_all_mse <- function(rslt){
+    tmp <- lapply(rslt[2:5], function(r){
+      # find estimator columns
+      col_idx <- grepl(".est", colnames(r))
+      colMeans(r[,col_idx]^2)
+    })
+    return(tmp)
+  }
+
   algo_frame <- function(){
     data.frame(est = c("full_sl","rm_sl",
-                       "SL.hal9001",
+              "SL.hal9002",
+              "SL.earth.cv",
               "SL.glm",
               "SL.bayesglm", 
-              "SL.earth",
+              # "SL.earth",
               "SL.step.interaction",
-              "SL.gam", 
+              # "SL.gam", 
               "SL.dbarts.mod",
               "SL.gbm.caretMod",
-              "SL.rf.caretMod",
-              "SL.rpart.caretMod", 
-              "SL.mean",
-              "SL.kernelKnn"),
-              label = c("HAL-SL","SL","HAL","GLM","BGLM","MARS","STEPGLM","GAM","BART","GBM","RF","RPART","MEAN","KNN"))
+              "SL.rf.caretMod"),
+              label = c("HAL-SL","SL","HAL","MARS","GLM","BGLM",
+                        "STEPGLM","BART","GBM","RF"))
   }
   bias_correct_frame <- function(){
     data.frame(est = c("log_tmle", "lin_tmle","onestep","drtmle"),
@@ -298,7 +324,7 @@ if (args[1] == 'merge') {
     vec_smr <- unlist(summary_measure_rslt)
     order_vec_smr <- order(abs(vec_smr - comp_value))
     # plot
-    par(oma = c(0,5.1,0,0))
+    par(oma = c(0,5.1,0,0), mar = c(5.1, 10.1, 2.1, 0.1))
     plot(x = 0, pch = "",
          y = 0,
          ylim = c(1,length(vec_smr)),
@@ -327,7 +353,7 @@ if (args[1] == 'merge') {
       points(x = vec_smr[order_vec_smr][i], y = ct, pch = ifelse(cv_bool, 1, 4),
              col = this_col)
       axis(side = 2, lwd = 0, at = ct, label = estimator_labels[order_vec_smr][i],
-           cex.axis = 0.5, las = 2, xpd = TRUE)
+           cex.axis = 0.25, las = 2, xpd = TRUE)
       abline(v = comp_value, lty = 3)
     }
   }
@@ -345,9 +371,10 @@ if (args[1] == 'merge') {
                     summary_measure = "summary_all_bias",
                     x_lim = c(0,100))
 
-  make_ordered_plot(new_rslt, stratify_conditions = "n == 200", 
-                    summary_measure = "summary_all_coverage",
-                    x_lim = c(0,1), comp_value = 0.95)  
+  make_ordered_plot(new_rslt, stratify_conditions = "n == 2000", 
+                    summary_measure = "summary_all_mse",
+                    x_lim = c(0,5), comp_value = 0)  
+  plot_done()
   make_ordered_plot(new_rslt, stratify_conditions = "n == 1000", 
                     summary_measure = "summary_all_coverage",
                     x_lim = c(0,1), comp_value = 0.95)  

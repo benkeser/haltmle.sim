@@ -5,7 +5,7 @@ cd ~/Dropbox/R/haltmle.sim/sandbox
 # random mechanisms
 scp  cent.R sce.sh dbenkese@snail.fhcrc.org:~/haltmle.sim
 # kang and schafers
-scp  cent_ks.R sce_ks.sh dbenkese@snail.fhcrc.org:~/haltmle.sim
+scp  cent_ks*.R sce_ks.sh dbenkese@snail.fhcrc.org:~/haltmle.sim
 # sin wave
 scp  cent_sin.R sce_sin.sh dbenkese@snail.fhcrc.org:~/haltmle.sim
 # scp mergeOnly.R subMerge.sh dbenkese@snail.fhcrc.org:~/haltmle.sim
@@ -15,7 +15,7 @@ cd haltmle.sim
 # random mechanisms 
 scp cent.R sce.sh dbenkese@rhino.fhcrc.org:~/haltmle.sim
 # kang and schafer
-scp cent_ks.R sce_ks.sh dbenkese@rhino.fhcrc.org:~/haltmle.sim
+scp cent_ks*.R sce_ks.sh dbenkese@rhino.fhcrc.org:~/haltmle.sim
 # sin wave
 scp cent_sin.R sce_sin.sh dbenkese@rhino.fhcrc.org:~/haltmle.sim
 
@@ -24,7 +24,8 @@ cd haltmle.sim
 # random mechanisms
 ./sce.sh ./cent.R rdg_n5000_v2
 # kang and schafer
-./sce_ks.sh ./cent_ks.R finalmod_v5
+./sce_ks.sh ./cent_ks_orig.R run_orig
+./sce_ks.sh ./cent_ks_mod.R run_mod
 # sin wave
 ./sce_sin.sh ./cent_sin.R lastsin
 

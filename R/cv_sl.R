@@ -286,10 +286,11 @@ get_ate_cv_g_pred <- function(A, V, all_fit_tasks, all_fits, all_sl, folds,
 
 #' estimate_nuisance
 #' 
-#' 
+#' @importFrom future.apply future_lapply
 estimate_nuisance <- function(Y, W, A, V = 5, learners, 
                               remove_learner = NULL, 
                               compute_superlearner = TRUE, 
+                              which_ctmle_g = "SL.hal9002",
                       sl_control_Q = list(ensemble_fn = "ensemble_linear",
                                    optim_risk_fn = "optim_risk_sl_se",
                                    weight_fn = "weight_sl_convex",
@@ -301,14 +302,13 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
                                    weight_fn = "weight_sl_convex",
                                    cv_risk_fn = "cv_risk_sl_r2",
                                    family = binomial(),
-                                   alpha = 0.05)){
+                                   alpha = 0.05),
+                      folds){
 	# get initial parameter values
     n <- length(Y)
     M <- length(learners)
     Y <- data.matrix(Y); colnames(Y) <- "Y"
-    # TO DO: make_folds function with more options, possibly from origami?
-    folds <- rep(seq_len(V), length = n)
-    folds <- sample(folds)
+
 
     #---------------------------------
     # outcome regression
@@ -324,7 +324,7 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
                                         fold_fits = fold_fits)
 
     # NOTE: could be future_lapply for parallelization
-    all_fits <- future::future_lapply(all_fit_tasks, FUN = get_or_fit, folds = folds, 
+    all_fits <- future.apply::future_lapply(all_fit_tasks, FUN = get_or_fit, folds = folds, 
                               W = W, A = A, Y = Y, sl_control = sl_control_Q)
 
     # all super learner weight-getting tasks
@@ -414,8 +414,15 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
                                         fold_fits = fold_fits)
 
     # NOTE: could be future_lapply for parallelization
-    all_fits <- future::future_lapply(all_fit_tasks, FUN = get_ps_fit, folds = folds, 
+    # NOTE: Over writes all_fits for outcome regression -- might want to change later
+    all_fits <- future.apply::future_lapply(all_fit_tasks, FUN = get_ps_fit, folds = folds, 
                               W = W, A = A, sl_control = sl_control_g)
+
+    # get CTMLE fits
+    ctmle_g_fits <- get_ctmle_g_fits(all_fits = all_fits, all_fit_tasks = all_fit_tasks, 
+                                 which_ctmle_g = which_ctmle_g, W = W, V = V, folds = folds)
+
+
 
     # all super learner weight-getting tasks
     if(compute_superlearner){
@@ -481,11 +488,57 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
     	                                                  g0W = 1 - cv_pred$cv_learner_pred[ , i])
     }
 
-    return(list(Qbar = Qbar_list, g = g_list, folds = folds))
+    return(list(Qbar = Qbar_list, g = g_list, folds = folds, ctmle_g_fits = ctmle_g_fits))
 }
 
-# @param Qbar a data.frame with names QAW, Q1W, Q0W 
-# @param g a data.frame with names g1W, g0W
+#' Get propensity score fits in a proper format for ctmle
+get_ctmle_g_fits <- function(all_fits, all_fit_tasks, which_ctmle_g, V, W, folds){
+  # need to get n X K matrix of predictions from HAL when 
+  # HAL is fit to the full data
+  # -------------------------------------------------------
+  # find full HAL fit
+  full_hal_idx <- cvma:::search_fits_for_learner(training_folds = seq_len(V),
+                                          fits = all_fit_tasks, 
+                                          learner = which_ctmle_g,
+                                          y = "A")
+  g_matrix <- predict_alllambda_SL.hal9002(all_fits[[full_hal_idx]]$fit$object, newdata = W)
+
+  # need to get n X K matrix of predictions from CV HAL 
+  n <- length(W[,1])
+  train_matrix <- combn(V, V-1)
+  all_out <- lapply(split(train_matrix,col(train_matrix)), function(tr){
+    learner_idx <- cvma:::search_fits_for_learner(fits = all_fit_tasks, 
+                                          y = "A", learner = which_ctmle_g, 
+                                          training_folds = tr)
+    this_g_matrix <- predict_alllambda_SL.hal9002(all_fits[[learner_idx]]$fit$object, 
+                                                  newdata = W[-which(folds %in% tr),,drop=FALSE])
+    return(this_g_matrix)
+  })
+
+  cv_g_matrix <- matrix(NA, nrow = length(W[,1]), ncol = dim(g_matrix)[2])
+  idx <- unlist(split(1:n, folds)[V:1], use.names = FALSE)
+  cv_g_matrix[idx,] <- Reduce(rbind, lapply(all_out, "[[", 1))
+
+  return(list(g_matrix = g_matrix, 
+              cv_g_matrix = cv_g_matrix))
+}
+
+
+get_iptw <- function(Y, W, A, g, gtol = 1e-2){
+  n <- length(Y)
+  gAW <- rep(0, n)
+  gAW[A == 1] <- g$g1W[A == 1]
+  gAW[A == 0] <- g$g0W[A == 0]
+  iptw_est <- mean((2*A - 1)/gAW * Y)
+  return(list(est = iptw_est, se = NA))
+}
+
+get_gcomp <- function(Y, W, A, Qbar){
+  return(list(est = mean(Qbar$Q1W) - mean(Qbar$Q0W), se = NA))
+}
+
+#' @param Qbar a data.frame with names QAW, Q1W, Q0W 
+#' @param g a data.frame with names g1W, g0W
 logistic_tmle <- function(Y, W, A, Qbar, g, gtol = 1e-2){
 	l <- min(Y); u <- max(Y)
 	Y_scale <- rescale(Y, l, u)
@@ -599,7 +652,81 @@ get_dr_tmle <- function(W, A, Y, Q, g, folds, est_name, ...){
   return(c(est = est, se = se))
 }
 
+get_dr_iptw <- function(W, A, Y, Q, g, folds, est_name, ...){
+  Qn <- list(Q$Q0W, Q$Q1W)
+  gn <- list(g$g0W, g$g1W)
+  # if it's a cv estimate of nuisance, then pass in
+  # the folds used to estimate
+  if(grepl("cv", est_name)){
+    cvFolds <- folds
+  }else{
+    # otherwise, don't use cv to estimate extra nuisance
+    cvFolds <- 1
+  }
+
+  dr_fit <- adaptive_iptw(W = W, A = A, Y = Y, Qn = Qn, gn = gn,
+                   a_0 = c(0,1), maxIter = 5, cvFolds = cvFolds, 
+                   SL_Qr = "SL.npreg", 
+                   verbose = FALSE)
+
+  ci_dr_fit <- ci(dr_fit, contrast = c(-1,1))
+  est <- ci_dr_fit$iptw_tmle[1,1]
+  se <- (ci_dr_fit$iptw_tmle[1,1] - ci_dr_fit$iptw_tmle[1,2])/qnorm(0.975)
+
+  return(c(est = est, se = se))
+}
+
+#' Matching estimators from Sekon's package
+#' @param which_estimator A numeric between 1 and 4, with 1 corresponding 
+#' to ps match with no bias adjust, 2 ps match with bias adjust, 3 genmatch
+#' with main terms only, 4 genmatch with squared and 2-way interaction terms
+#' @importFrom Matching Match GenMatch
+get_matching <- function(Y, W, A, g, which_estimator, ...){
+  if(which_estimator == 1){
+    # standard propensity score matching 1:1 match
+    rr1 <- tryCatch({
+      Matching::Match(Y = Y, Tr = A, X = g$g1W, estimand = "ATE")
+    }, error = function(e){
+      return(list(est = NA, se = NA, message = e))
+    })
+  }else if(which_estimator == 2){
+      # standard propensity score matching 1:1 match with bias adjustment
+   rr1 <- tryCatch({ 
+    Matching::Match(Y = Y, Tr = A, X = g$g1W, estimand = "ATE", BiasAdjust = TRUE)
+    }, error = function(e){
+      return(list(est = NA, se = NA, message = e))
+    })    
+  }else if(which_estimator == 3){
+      # automatic matching with main terms only
+    BalanceMatrix_mt <- cbind(W, g$g1W)
+    gen1 <- Matching::GenMatch(Tr = A, X = W, BalanceMatrix = BalanceMatrix_mt,
+                     pop.size = 1000, verbose = FALSE, print.level = 0)
+
+    rr1 <- tryCatch({
+      Matching::Match(Y = Y, Tr = A, X = BalanceMatrix_mt, Weight.matrix = gen1,
+                   estimand = "ATE")
+        }, error = function(e){
+      return(list(est = NA, se = NA, message = e))
+    })
+  }else if(which_estimator == 4){
+      # automatic matching with main terms, squared, terms, and interactions
+    main <- model.matrix(A ~ -1 + .^2, data = W)
+    pol <- model.matrix(as.formula(paste0("A ~ -1 + ", paste0("I(", colnames(W),"^2)",collapse = "+"))), data = W)
+    BalanceMatrix_large <- cbind(main, pol, g$g1W)
+    gen2 <- Matching::GenMatch(Tr = A, X = W, BalanceMatrix = BalanceMatrix_large,
+                     pop.size = 1000, verbose = FALSE, print.level = 0)
+    rr1 <- tryCatch({
+          Matching::Match(Y = Y, Tr = A, X = BalanceMatrix_large, Weight.matrix = gen2,
+                   estimand = "ATE")
+        },  error = function(e){
+      return(list(est = NA, se = NA, message = e))
+  })
+  }
+  return(list(est = rr1$est, se = rr1$se, message = rr1$message))
+}
+
 #' @export
+
 get_all_ates <- function(Y, W, A, V = 5, learners, 
                               remove_learner = NULL, 
                               compute_superlearner = TRUE, 
@@ -617,14 +744,27 @@ get_all_ates <- function(Y, W, A, V = 5, learners,
                                    family = binomial(),
                                    alpha = 0.05),
                       which_dr_tmle = c("full_sl","cv_full_sl",
-                                        "SL.hal9001","cv_SL.hal9001")){
+                                        "SL.hal9002","cv_SL.hal9002"),
+                      which_dr_iptw = c("SL.hal9002","cv_SL.hal9002",
+                                        "full_sl", "cv_full_sl",
+                                        "SL.gbm.caretMod"),
+                      which_Match = c("SL.hal9002","SL.glm","full_sl"),
+                      which_ctmle_g = "SL.hal9002",
+                      which_ctmle_Q = c("full_sl","cv_full_sl",
+                                        "SL.hal9002","cv_SL.hal9002",
+                                        "SL.glm")){
 	# estimate nuisance
   cat("Fitting nuisance \n")
+  # TO DO: make_folds function with more options, possibly from origami?
+  n <- length(A)
+  folds <- rep(seq_len(V), length = n)
+  folds <- sample(folds)
 	nuisance <- estimate_nuisance(Y = Y, W = W, A = A, V = V, learners = learners,
 	                              remove_learner = remove_learner, 
 	                              sl_control_Q = sl_control_Q,
 	                              sl_control_g = sl_control_g,
-                                compute_superlearner = compute_superlearner)
+                                compute_superlearner = compute_superlearner,
+                                which_ctmle_g = which_ctmle_g, folds = folds)
   # truncate propensity estimates
   nuisance$g <- lapply(nuisance$g, function(g){
     tmp <- apply(g, 2, function(gn){ 
@@ -649,27 +789,59 @@ get_all_ates <- function(Y, W, A, V = 5, learners,
 	
 	onestep_ate <- mapply(Qbar = nuisance$Qbar, g = nuisance$g, get_onestep_ate,
 	                   MoreArgs = list(Y = Y, A = A, W = W), SIMPLIFY = FALSE)
+  # get standard errors
+  log_tmle_se <- mapply(Qbar = log_tmle, g = nuisance$g, ate = log_tmle_ate,
+                        get_tmle_se, MoreArgs = list(Y = Y, A = A, W = W), 
+                        SIMPLIFY = FALSE) # get standard errors
+  lin_tmle_se <- mapply(Qbar = lin_tmle, g = nuisance$g, ate = lin_tmle_ate,
+                        get_tmle_se, MoreArgs = list(Y = Y, A = A, W = W), 
+                        SIMPLIFY = FALSE)
+  onestep_se <- mapply(Qbar = nuisance$Qbar, g = nuisance$g, ate = onestep_ate,
+                        get_onestep_se, MoreArgs = list(Y = Y, A = A, W = W), 
+                        SIMPLIFY = FALSE)
 
-  # TO DO: ADD IPTW estimators and GCOMP?
-  # iptw <- 
+  logistic_tmle_results <- mapply(est = log_tmle_ate, se = log_tmle_se, 
+                                  FUN = c, SIMPLIFY = FALSE)
+  linear_tmle_results <- mapply(est = lin_tmle_ate, se = lin_tmle_se, 
+                                  FUN = c, SIMPLIFY = FALSE)
+  onestep_results <- mapply(est = onestep_ate, se = onestep_se, 
+                                  FUN = c, SIMPLIFY = FALSE)
 
-	# get standard errors
-	log_tmle_se <- mapply(Qbar = log_tmle, g = nuisance$g, ate = log_tmle_ate,
-	                      get_tmle_se, MoreArgs = list(Y = Y, A = A, W = W), 
-	                      SIMPLIFY = FALSE)	# get standard errors
-	lin_tmle_se <- mapply(Qbar = lin_tmle, g = nuisance$g, ate = lin_tmle_ate,
-	                      get_tmle_se, MoreArgs = list(Y = Y, A = A, W = W), 
-	                      SIMPLIFY = FALSE)
-	onestep_se <- mapply(Qbar = nuisance$Qbar, g = nuisance$g, ate = onestep_ate,
-	                      get_onestep_se, MoreArgs = list(Y = Y, A = A, W = W), 
-	                      SIMPLIFY = FALSE)
+  cat("Getting CTMLEs \n")
+  ctmle_results <- get_ctmle_results(W=W, A = A, Y = Y, V = V, folds = folds, Qs = nuisance$Qbar[which_ctmle_Q],
+                                     g = nuisance$ctmle_g_fits, n = length(A), gtol = gtol)
 
-	logistic_tmle_results <- mapply(est = log_tmle_ate, se = log_tmle_se, 
-	                                FUN = c, SIMPLIFY = FALSE)
-	linear_tmle_results <- mapply(est = lin_tmle_ate, se = lin_tmle_se, 
-	                                FUN = c, SIMPLIFY = FALSE)
-	onestep_results <- mapply(est = onestep_ate, se = onestep_se, 
-	                                FUN = c, SIMPLIFY = FALSE)
+
+  cat("Getting IPTW/GCOMP \n")
+  # get iptw estimators
+  iptw_results <- lapply(nuisance$g, get_iptw, Y = Y, A = A, W = W)
+
+  # get gcomp estimators
+  gcomp_results <- lapply(nuisance$Q, get_gcomp, Y = Y, A = A, W = W)
+
+  # get matching estimators
+  cat("Getting Matching \n")
+  matching_results <- sapply(1:4, function(x){
+    all_g <- lapply(nuisance$g[which_Match], get_matching, W = W, A = A, Y = Y, which_estimator = x)
+    return(all_g)
+  }, simplify = FALSE)
+
+  # get tan estimator
+  cat("Getting Tan & Cao \n")
+  tan_results <- get_tan_est(A = A, Y = Y, W = W, 
+                             family = ifelse(all(Y %in% c(0,1)), "binomial","gaussian"))
+  # get cao estimator
+  cao_results <- get_cao_est(A = A, Y = Y , W = W, 
+                             family = ifelse(all(Y %in% c(0,1)), "binomial","gaussian"))
+  cat("Getting Vermeulen \n")
+  # get vermeulen estimator 1
+  verm1_results <- m.biasreducedDR.identity(A = A, W = W, Y = Y)
+
+  # get vermeulen estimators 2 for all nuisance parameters except 
+  # cv versions (since no theory to back up why that would be a good idea)
+  verm2_results <- lapply(nuisance$Qbar[!grepl("cv_",names(nuisance$Qbar))], 
+                          data.adaptive.biasreduced.DR,
+                          A = A, Y = Y, W = W)
 
   # get dr inference TMLEs
   cat("Getting DR-TMLEs \n")
@@ -677,11 +849,255 @@ get_all_ates <- function(Y, W, A, V = 5, learners,
                     est_name = split(which_dr_tmle, 1:length(which_dr_tmle)),
                     get_dr_tmle,
                     MoreArgs = list(folds = nuisance$folds, W = W, A = A, Y = Y),
+                    SIMPLIFY = FALSE)  
+  
+  cat("Getting DR-IPTW \n")
+  dr_iptw_results <- mapply(Q = nuisance$Qbar[which_dr_iptw], g = nuisance$g[which_dr_iptw], 
+                    est_name = split(which_dr_iptw, seq_along(which_dr_iptw)),
+                    get_dr_iptw,
+                    MoreArgs = list(folds = nuisance$folds, W = W, A = A, Y = Y),
                     SIMPLIFY = FALSE)
+
 
 	return(list(logistic_tmle = logistic_tmle_results,
 	            linear_tmle = linear_tmle_results,
 	            onestep = onestep_results,
-              dr_tmle = dr_tmle_results))
+              dr_tmle = dr_tmle_results,
+              dr_iptw = dr_iptw_results,
+              ctmle = ctmle_results,
+              iptw = iptw_results,
+              gcomp = gcomp_results,
+              match = matching_results,
+              tan = tan_results,
+              cao = cao_results,
+              verm1 = verm1_results,
+              verm2 = verm2_results))
 }
+
+
+get_ctmle_results <- function(Qs, g, which_ctmle_g, which_cvtmle_Q, 
+                              folds, V, n, Y, A, W, gtol){
+  split_folds <- split(1:n, folds)
+  all_ctmles <- lapply(Qs, function(x){
+    ctmle_general_fit <- ctmle::ctmleGeneral(Y = Y, A = A, W = W, Q = x[c("Q0W","Q1W")],
+                                   ctmletype = 1, 
+                                   gn_candidates = g$g_matrix,
+                                   gn_candidates_cv = g$cv_g_matrix,
+                                   folds = split_folds, V = V, gbound = gtol)
+    list(est = ctmle_general_fit$est, se = sqrt(ctmle_general_fit$var.psi))
+  })
+  return(all_ctmles)
+}
+
+
+#' data.adaptive.biasreduced.DR
+#' 
+#' Vermeulen estimator from IJB paper
+#' @export 
+
+data.adaptive.biasreduced.DR <-
+    function(A, Y, W, Qbar, 
+             zeta=0.005, 
+             alpha=0.05, psi.tilde=0){
+        
+        expit <- function(x){1/(1+exp(-x))}
+        logit <- function(x){log(x/(1-x))}
+        n <- length(A)
+        int.cov <- cbind(rep(1,n),W)
+        # colnames(dat.cov)<-
+        #     paste("cov.",1:dim(cov) [2],sep="")
+        # propensity score
+        mler <- glm(A ~ ., data = W,family="binomial")
+        ps.par1 <- fitted(mler)
+        ps.par0 <- 1 - ps.par1
+        # initial conditional mean outcome
+        a <- min(Y) - 0.1*abs(min(Y))
+        b <- max(Y) + 0.1*abs(max(Y))
+        Y.star <- (Y-a)/(b-a)
+        # {
+        #     if(type.initQ=="par") {
+        #         mley <- lm(Y.star~cov,subset=(R==1))
+        #         initQ <- predict(mley,newdata=dat.cov)
+        #     }
+        #     else if(type.initQ=="SL"){
+        #         Ym.star <- Y.star[R==1]
+        #         dat.cov.m <- dat.cov[R==1,,drop=FALSE]
+        #         SL.library <- c("SL.gbm.caret1","SL.step.interaction","SL.glm")
+        #         initQ <- (SuperLearner(Y=Ym.star,X=dat.cov.m,
+        #                               newX=dat.cov,verbose = FALSE,
+        #                               SL.library=SL.library,
+        #                               method="method.NNLS")$SL.predict -a)/(b-a)
+        #     }else if(type.initQ=="npreg"){
+        #         dat.cov.m <- dat.cov[R==1,,drop=FALSE]
+        #         fm <- do.call("SL.npreg",args=list(Y=Y[R==1], X=dat.cov.m,obsWeights=rep(1,length(Y[R==1])),
+        #                                          newX=dat.cov, family=gaussian()))
+        #         initQ <- (fm$pred-a)/(b-a)
+        #     }
+        # }
+
+        initQ1W.trunc <- ifelse(Qbar$Q1W < zeta, zeta,
+                              ifelse(Qbar$Q1W > 1-zeta, 1-zeta, Qbar$Q1W))
+        initQ0W.trunc <- ifelse(Qbar$Q0W < zeta, zeta,
+                              ifelse(Qbar$Q0W > 1-zeta, 1-zeta, Qbar$Q0W))
+
+        # fluctuation
+        w.cov1 <- (1 - ps.par1) / ps.par1 * int.cov
+        suppressWarnings(
+        fluctuationQ1W <- glm(Y.star ~ -1 + ., data = w.cov1,
+                           family=binomial,
+                           offset=logit(initQ1W.trunc),
+                           subset=(A==1))
+        )
+        flucQ1W <- expit(logit(initQ1W.trunc)+
+                           as.vector(coef(fluctuationQ1W)%*%t(w.cov1)))                
+        w.cov0 <- (1 - ps.par0) / ps.par0 * int.cov
+        suppressWarnings(
+        fluctuationQ0W <- glm(Y.star ~ -1 + ., data = w.cov1,
+                           family=binomial,
+                           offset=logit(initQ0W.trunc),
+                           subset=(A==0))
+        )
+        flucQ0W <- expit(logit(initQ0W.trunc)+
+                           as.vector(coef(fluctuationQ0W)%*%t(w.cov0)))
+
+        # doubly robust estimator
+        U <- function(R,r,Y,outcome,ps){
+            outcome+as.numeric(R == r)/ps*(Y-outcome)
+        }
+        U1 <- U(R=A,r = 1,Y=Y.star,outcome=flucQ1W, ps=ps.par1)
+        est.trunc1 <- mean(U1)
+        psi1 <- (b-a)*est.trunc1+a
+        U0 <- U(R=A,r =0, Y=Y.star,outcome=flucQ0W, ps=ps.par0)
+        est.trunc0 <- mean(U0)
+        psi0 <- (b-a)*est.trunc0+a
+
+        # standard error
+        cov_mat <- (b-a)*cov(cbind(U0,U1))
+        grad <- matrix(c(-1, 1), nrow = 2)
+        se.ate <- sqrt(t(grad)%*% cov_mat %*% grad / n)
+        return(list(est=psi1 - psi0,
+                    se=se.ate))
+    }
+
+
+#' m.biasreducedDR.identity
+#' 
+#' Code to implement Vermeulen non-data-adaptive estimator
+#' @export
+
+
+m.biasreducedDR.identity<-function(A,Y,W){
+  n<-length(A)
+  int.cov<-cbind(rep(1,n),W)
+  expit<-function(x) exp(x)/(1+exp(x))
+  U <- function(R,Y,X,gamma,beta){
+    (R/expit(gamma%*%t(X))*(Y-beta%*%t(X))+beta%*%t(X))
+  }
+  min.Uint<-function(gamma){
+    -mean((-R*exp(-gamma%*%t(int.cov)))+(-(1-R)*(gamma%*%t(int.cov))))
+  }
+  U_mat <- matrix(NA, ncol = 2, nrow = n)
+  for(a in c(0,1)){
+    R <- as.numeric(A == a)
+    init.gamma<-coef(glm(R~.,data = W,family="binomial"))
+    sol<-nlm(min.Uint, init.gamma)
+    gamma.BR<-sol$estimate
+    weight<-as.vector(1/exp(gamma.BR%*%t(int.cov)))
+    beta.BR<-coef(lm(Y ~ -1+.,data = int.cov, subset=(R==1),weights=weight))
+    U_mat[,a+1] <- U(R,Y,int.cov,gamma.BR,beta.BR)
+  }
+  psi1 <- mean(U_mat[,2])
+  psi0 <- mean(U_mat[,1])
+  cov_mat <-  cov(U_mat)
+  grad <- matrix(c(-1, 1), nrow = 2)
+  se.ate <- sqrt(t(grad)%*% cov_mat %*% grad / n)
+  return(list(est = psi1 - psi0, se = se.ate))
+}
+
+
+#' getCaoEst
+#' 
+#' Code to implement Cao 2009 estimator
+getCaoEst <- function(R,Y,cov,family){
+    # fit outcome regression
+    Qmod <- glm(paste0("Y ~", paste0(colnames(cov),collapse="+")),
+        data = data.frame(Y, cov)[R==1,],
+        family = family)
+
+    Qn <- predict(Qmod, newdata=data.frame(Y,cov), type="response")
+
+    # fit "enhanced propensity" regression
+    negLogLik <- function(pars,R,cov){
+    delta <- pars[1]; gamma <- matrix(pars[2:length(pars)],ncol=1)
+    X <- data.matrix(cbind(rep(1,length(R)), cov))
+    g <- 1-exp(delta + X%*%gamma)/(1 + exp(X%*%gamma))
+    return(-sum(R*log(g) + (1-R)*log(1-g)))
+    }
+
+    constraint <- function(pars, R,cov){
+     delta <- pars[1]; gamma <- matrix(pars[2:length(pars)],ncol=1)
+     X <- data.matrix(cbind(rep(1,length(R)), cov))
+     g <- 1-exp(delta + X%*%gamma)/(1 + exp(X%*%gamma))
+     # first that all probs are between 0 and 1
+     c1 <- as.numeric(all(g < 1) & all(g > 0))
+     # now that sum of inverse weights sum to n
+     c2 <- as.numeric(sum(R/g) == length(R))    
+     return(c1)
+    }
+
+    suppressWarnings(
+    tmp <- optim(rep(0,ncol(cov)+2), fn = negLogLik, R = R, cov = cov,
+     control=list(maxit=1e2))
+    )
+    p <- tmp$par
+    delta <- p[1]; gamma <- matrix(p[2:length(p)],ncol=1)
+    X <- data.matrix(cbind(rep(1,length(R)), cov))
+    gn <- 1-exp(delta + X%*%gamma)/(1 + exp(X%*%gamma))
+    if(any(gn > 1) | any(gn < 0)){
+        suppressWarnings(
+        tmp2 <- constrOptim.nl(tmp$par, fn = negLogLik, hin = constraint, R = R, cov = cov)
+        )
+        p <- tmp2$par
+        delta <- p[1]; gamma <- matrix(p[2:length(p)],ncol=1)
+        X <- data.matrix(cbind(rep(1,length(R)), cov))
+        g2 <- 1-exp(delta + X%*%gamma)/(1 + exp(X%*%gamma))
+    }
+    
+    est <- mean(
+        R*Y/gn - (R - gn)/gn * Qn
+    )
+    return(est)
+}
+
+#' cao.dr 
+#' 
+#' Compute the Cao 2009 estimator
+#' @export 
+get_cao_est <- function(A,Y,W, family = "gaussian"){
+    # get estimate
+    est0 <- getCaoEst(R=as.numeric(A == 0),Y=Y,cov=W,family=family)
+    est1 <- getCaoEst(R=as.numeric(A == 1),Y=Y,cov=W,family=family)
+    # get bootstrap CI
+    return(list(est = est1 - est0, se = NA))
+}
+
+tan_est <- function(W, A, Y, a, family){
+  Qmod <- glm(Y ~ ., data = data.frame(Y = Y, W)[A==a,], family = family)
+  Qn <- predict(Qmod, type="response", newdata=W)
+  gmod <- glm(as.numeric(A == a) ~ ., data=W, family="binomial")
+  gn <- predict(gmod, type="response")
+  
+  out3 <- iWeigReg::mn.clik(y = Y, tr = A, p = gn, g = cbind(1, Qn), X = model.matrix(gmod))
+  return(out3$mu)
+}
+
+#' @importFrom iWeigReg mn.clik
+get_tan_est <- function(W, A, Y, family){
+   psi0 <- tan_est(W, A, Y, a = 0, family = family)
+   psi1 <- tan_est(W, A, Y, a = 1, family = family)
+   return(list(est = psi1 - psi0, se = NA))
+}
+
+
+
 

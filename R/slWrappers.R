@@ -1,10 +1,12 @@
 #' @export
 SL.hal9002 <- function (Y, X, newX = NULL, degrees = NULL, family = stats::gaussian(), 
-    obsWeights = rep(1, length(Y)), ...) 
+    obsWeights = rep(1, length(Y)), nlambda = 200, ...) 
 {
     hal_out <- fit_hal(Y = Y, X = X, degrees = degrees, yolo = FALSE,
+                       family = family$family, 
                        standardize = FALSE, fit_type = "glmnet",
-                       lambda =  exp(seq(3, -50, length = 2000)))
+                       lambda =  exp(seq(3, -50, length = 200)),
+                       return_lasso = TRUE)
     if (!is.null(newX)) {
         pred <- stats::predict(object = hal_out, new_data = newX)
     }
@@ -16,6 +18,30 @@ SL.hal9002 <- function (Y, X, newX = NULL, degrees = NULL, family = stats::gauss
     class(out$fit) <- "SL.hal9001"
     return(out)
 }
+
+#' @export 
+predict_alllambda_SL.hal9002 <- function(object, newdata, ...) {
+  if (!is.matrix(newdata)) {
+    new_data <- as.matrix(newdata)
+  }
+
+  # generate design matrix
+  pred_x_basis <- hal9001:::make_design_matrix(new_data, object$basis_list)
+  group <- object$copy_map[[1]]
+
+  # reduce matrix of basis functions
+  pred_x_basis <- hal9001:::apply_copy_map(pred_x_basis, object$copy_map)
+
+  # TO DO: Probably much faster to make one matrix operation!!!
+  # generate predictions
+  # preds <- sapply(object$hal_lasso$lambda, function(l){
+  #   predict(object$hal_lasso, newx = pred_x_basis, 
+  #                  s = l)})
+  n <- dim(pred_x_basis)[1]
+  preds <- cbind(rep(1, n), pred_x_basis) %*% rbind(object$hal_lasso$glmnet.fit$a0, object$hal_lasso$glmnet.fit$beta)
+  return(as.matrix(preds))
+}
+
 
 
 #' @export
