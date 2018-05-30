@@ -337,13 +337,23 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
                               Y = data.frame(Y=Y), V = V, all_fit_tasks = all_fit_tasks, 
                               all_fits = all_fits, folds = folds,
                               learners = learners, sl_control = sl_control_Q)
-                              # ensemble_fn = ensemble_fn, risk_sl_control = risk_sl_control, 
-                              # weight_sl_control = weight_sl_control)
+      all_dsl <- lapply(all_sl_tasks, FUN = cvma:::get_sl, 
+                              Y = data.frame(Y=Y), V = V, all_fit_tasks = all_fit_tasks, 
+                              all_fits = all_fits, folds = folds,
+                              learners = learners, sl_control = list(ensemble_fn = "ensemble_linear",
+                                   optim_risk_fn = "optim_risk_sl_se",
+                                   weight_fn = "weight_sl_01",
+                                   cv_risk_fn = "cv_risk_sl_r2",
+                                   family = gaussian(),
+                                   alpha = 0.05))
     }else{
       all_sl <- NULL
     }
 
     cv_pred <- get_ate_cv_Q_pred(Y, V, all_fit_tasks, all_fits, all_sl, folds, 
+                             sl_control_Q, learners = learners, remove_index = NULL,
+                             compute_superlearner = compute_superlearner)
+    cv_pred_dsl <- get_ate_cv_Q_pred(Y, V, all_fit_tasks, all_fits, all_dsl, folds, 
                              sl_control_Q, learners = learners, remove_index = NULL,
                              compute_superlearner = compute_superlearner)
     # get predictions for non-CV TMLE
@@ -354,23 +364,42 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
     if(compute_superlearner){
       sl_pred <- do.call(sl_control_Q$ensemble_fn, args = list(pred = pred, weight = 
                                                              all_sl[[1]]$sl_weight))
+      dsl_pred <- do.call(sl_control_Q$ensemble_fn, args = list(pred = pred, weight = 
+                                                             all_sl[[1]]$dsl_weight))
     }
     # now try without a particular learner
     if(!is.null(remove_learner)){
 	    remove_index <- which(learners %in% remove_learner)    	
 
-	    all_sl_rm <- lapply(all_sl_tasks, FUN = get_rm_sl, 
+      all_sl_rm <- lapply(all_sl_tasks, FUN = get_rm_sl, 
+                       Y = Y, V = V, all_fit_tasks = all_fit_tasks, 
+                       all_fits = all_fits, folds = folds,
+                       learners = learners[-remove_index], remove_index = remove_index, 
+                       sl_control = sl_control_Q)
+      all_dsl_rm <- lapply(all_sl_tasks, FUN = get_rm_sl, 
 	                     Y = Y, V = V, all_fit_tasks = all_fit_tasks, 
 	                     all_fits = all_fits, folds = folds,
 	                     learners = learners[-remove_index], remove_index = remove_index, 
-	                     sl_control = sl_control_Q)
+	                     sl_control = list(ensemble_fn = "ensemble_linear",
+                                   optim_risk_fn = "optim_risk_sl_se",
+                                   weight_fn = "weight_sl_01",
+                                   cv_risk_fn = "cv_risk_sl_r2",
+                                   family = gaussian(),
+                                   alpha = 0.05))
 
-	    cv_pred_rm <- get_ate_cv_Q_pred(Y, V, all_fit_tasks, all_fits, all_sl_rm, folds, 
+      cv_pred_rm <- get_ate_cv_Q_pred(Y, V, all_fit_tasks, all_fits, all_sl_rm, folds, 
+                               sl_control_Q, learners = learners, remove_index = remove_index,
+                               compute_superlearner = compute_superlearner)	    
+      cv_dpred_rm <- get_ate_cv_Q_pred(Y, V, all_fit_tasks, all_fits, all_dsl_rm, folds, 
 	                             sl_control_Q, learners = learners, remove_index = remove_index,
                                compute_superlearner = compute_superlearner)
+
 	    # predictions for sl with hal removed 
 	    sl_pred_rm <- do.call(sl_control_Q$ensemble_fn, args = list(pred = pred[,-remove_index], weight = 
                                                            all_sl_rm[[1]]$sl_weight))
+      dsl_pred_rm <- do.call(sl_control_Q$ensemble_fn, args = list(pred = pred[,-remove_index], weight = 
+                                                           all_dsl_rm[[1]]$sl_weight))
+
 	}
 
     # format everything
@@ -380,19 +409,32 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
       Qbar_list$full_sl <- data.frame(Q0W = sl_pred[1:n],
                                      Q1W = sl_pred[(n+1):(2*n)],
                                      QAW = as.numeric(ifelse(A == 0, sl_pred[1:n], sl_pred[(n+1):(2*n)])))
+      Qbar_list$full_dsl <- data.frame(Q0W = dsl_pred[1:n],
+                                     Q1W = dsl_pred[(n+1):(2*n)],
+                                     QAW = as.numeric(ifelse(A == 0, dsl_pred[1:n], dsl_pred[(n+1):(2*n)])))
+
       # cv hal super learner
       Qbar_list$cv_full_sl <- data.frame(Q0W = cv_pred$cv_sl_pred[1:n],
                                      Q1W = cv_pred$cv_sl_pred[(n+1):(2*n)],
                                      QAW = as.numeric(ifelse(A == 0, cv_pred$cv_sl_pred[1:n], cv_pred$cv_sl_pred[(n+1):(2*n)])))
+      Qbar_list$cv_full_dsl <- data.frame(Q0W = cv_dpred$cv_sl_pred[1:n],
+                                     Q1W = cv_dpred$cv_sl_pred[(n+1):(2*n)],
+                                     QAW = as.numeric(ifelse(A == 0, cv_dpred$cv_sl_pred[1:n], cv_dpred$cv_sl_pred[(n+1):(2*n)])))
       if(!is.null(remove_learner)){
   	    # hal super learner
   	    Qbar_list$rm_sl <- data.frame(Q0W = sl_pred_rm[1:n],
-  	                                   Q1W = sl_pred_rm[(n+1):(2*n)],
-  	                                   QAW = as.numeric(ifelse(A == 0, sl_pred_rm[1:n], sl_pred_rm[(n+1):(2*n)])))
+                                       Q1W = sl_pred_rm[(n+1):(2*n)],
+                                       QAW = as.numeric(ifelse(A == 0, sl_pred_rm[1:n], sl_pred_rm[(n+1):(2*n)])))
+        Qbar_list$rm_dsl <- data.frame(Q0W = dsl_pred_rm[1:n],
+  	                                   Q1W = dsl_pred_rm[(n+1):(2*n)],
+  	                                   QAW = as.numeric(ifelse(A == 0, dsl_pred_rm[1:n], dsl_pred_rm[(n+1):(2*n)])))
   	    # cv hal super learner
   	    Qbar_list$cv_rm_sl <- data.frame(Q0W = cv_pred_rm$cv_sl_pred[1:n],
-  	                                   Q1W = cv_pred_rm$cv_sl_pred[(n+1):(2*n)],
-  	                                   QAW = as.numeric(ifelse(A == 0, cv_pred_rm$cv_sl_pred[1:n], cv_pred$cv_sl_pred[(n+1):(2*n)])))
+                                       Q1W = cv_pred_rm$cv_sl_pred[(n+1):(2*n)],
+                                       QAW = as.numeric(ifelse(A == 0, cv_pred_rm$cv_sl_pred[1:n], cv_pred_rm$cv_sl_pred[(n+1):(2*n)])))
+        Qbar_list$cv_rm_dsl <- data.frame(Q0W = cv_dpred_rm$cv_sl_pred[1:n],
+  	                                   Q1W = cv_dpred_rm$cv_sl_pred[(n+1):(2*n)],
+  	                                   QAW = as.numeric(ifelse(A == 0, cv_dpred_rm$cv_sl_pred[1:n], cv_dpred_rm$cv_sl_pred[(n+1):(2*n)])))
       }
     }
     # add other predictions
@@ -434,10 +476,20 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
                               Y = data.frame(A=A), V = V, all_fit_tasks = all_fit_tasks, 
                               all_fits = all_fits, folds = folds,
                               learners = learners, sl_control = sl_control_g)
-                              # ensemble_fn = ensemble_fn, risk_sl_control = risk_sl_control, 
-                              # weight_sl_control = weight_sl_control)
+      all_dsl <- lapply(all_sl_tasks, FUN = cvma:::get_sl, 
+                              Y = data.frame(A=A), V = V, all_fit_tasks = all_fit_tasks, 
+                              all_fits = all_fits, folds = folds,
+                              learners = learners, sl_control = list(ensemble_fn = "ensemble_linear",
+                                   optim_risk_fn = "optim_risk_sl_nloglik",
+                                   weight_fn = "weight_sl_01",
+                                   cv_risk_fn = "cv_risk_sl_r2",
+                                   family = binomial(),
+                                   alpha = 0.05))
     }
     cv_pred <- get_ate_cv_g_pred(A, V, all_fit_tasks, all_fits, all_sl, folds, 
+                             sl_control_g, learners = learners, remove_index = NULL,
+                             compute_superlearner = compute_superlearner)    
+    cv_dpred <- get_ate_cv_g_pred(A, V, all_fit_tasks, all_fits, all_dsl, folds, 
                              sl_control_g, learners = learners, remove_index = NULL,
                              compute_superlearner = compute_superlearner)
     # get predictions for non-CV TMLE
@@ -448,19 +500,36 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
     if(compute_superlearner){
       sl_pred <- do.call(sl_control_g$ensemble_fn, args = list(pred = pred, weight = 
                                                              all_sl[[1]]$sl_weight))
+      dsl_pred <- do.call(sl_control_g$ensemble_fn, args = list(pred = pred, weight = 
+                                                             all_dsl[[1]]$sl_weight))
     # now try without a particular learner
     if(!is.null(remove_learner)){
     remove_index <- which(learners %in% remove_learner)
 	    all_sl_rm <- lapply(all_sl_tasks, FUN = get_rm_sl, 
+                       Y = A, V = V, all_fit_tasks = all_fit_tasks, 
+                       all_fits = all_fits, folds = folds,
+                       learners = learners[-remove_index], remove_index = remove_index, 
+                       sl_control = sl_control_g)
+      all_dsl_rm <- lapply(all_sl_tasks, FUN = get_rm_sl, 
 	                     Y = A, V = V, all_fit_tasks = all_fit_tasks, 
 	                     all_fits = all_fits, folds = folds,
 	                     learners = learners[-remove_index], remove_index = remove_index, 
-	                     sl_control = sl_control_g)
+	                     sl_control = list(ensemble_fn = "ensemble_linear",
+                                   optim_risk_fn = "optim_risk_sl_nloglik",
+                                   weight_fn = "weight_sl_01",
+                                   cv_risk_fn = "cv_risk_sl_r2",
+                                   family = binomial(),
+                                   alpha = 0.05))
     	# predictions for sl with hal removed 
-	    sl_pred_rm <- do.call(sl_control_g$ensemble_fn, args = list(pred = pred[,-remove_index], weight = 
-	                                                           all_sl_rm[[1]]$sl_weight))
+      sl_pred_rm <- do.call(sl_control_g$ensemble_fn, args = list(pred = pred[,-remove_index], weight = 
+                                                             all_sl_rm[[1]]$sl_weight))
+	    dsl_pred_rm <- do.call(sl_control_g$ensemble_fn, args = list(pred = pred[,-remove_index], weight = 
+	                                                           all_dsl_rm[[1]]$sl_weight))
 
-	    cv_pred_rm <- get_ate_cv_g_pred(A, V, all_fit_tasks, all_fits, all_sl_rm, folds, 
+	   cv_pred_rm <- get_ate_cv_g_pred(A, V, all_fit_tasks, all_fits, all_sl_rm, folds, 
+                               sl_control_g, learners = learners, remove_index = remove_index,
+                               compute_superlearner = compute_superlearner)
+     cv_dpred_rm <- get_ate_cv_g_pred(A, V, all_fit_tasks, all_fits, all_dsl_rm, folds, 
 	                             sl_control_g, learners = learners, remove_index = remove_index,
                                compute_superlearner = compute_superlearner)
 	   }
@@ -472,13 +541,17 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
     if(compute_superlearner){
       # hal super learner
       g_list$full_sl <- data.frame(g1W = sl_pred, g0W = 1 - sl_pred)
+      g_list$full_dsl <- data.frame(g1W = dsl_pred, g0W = 1 - dsl_pred)
       # cv hal super learner
       g_list$cv_full_sl <- data.frame(g1W = cv_pred$cv_sl_pred, g0W = 1 - cv_pred$cv_sl_pred)
+      g_list$cv_full_dsl <- data.frame(g1W = cv_pred$cv_dsl_pred, g0W = 1 - cv_pred$cv_dsl_pred)
       # hal super learner
       if(!is.null(remove_learner)){
-  	    g_list$sl <- data.frame(g1W = sl_pred_rm, g0W = 1 - sl_pred_rm)
+        g_list$sl <- data.frame(g1W = sl_pred_rm, g0W = 1 - sl_pred_rm)
+  	    g_list$dsl <- data.frame(g1W = dsl_pred_rm, g0W = 1 - dsl_pred_rm)
   	    # cv hal super learner
-  	    g_list$cv_sl <- data.frame(g1W = cv_pred_rm$cv_sl_pred, g0W = 1 - cv_pred_rm$cv_sl_pred)
+        g_list$cv_sl <- data.frame(g1W = cv_pred_rm$cv_sl_pred, g0W = 1 - cv_pred_rm$cv_sl_pred)
+  	    g_list$cv_dsl <- data.frame(g1W = cv_dpred_rm$cv_sl_pred, g0W = 1 - cv_dpred_rm$cv_sl_pred)
       }
     }
     # add other predictions
@@ -506,12 +579,15 @@ get_ctmle_g_fits <- function(all_fits, all_fit_tasks, which_ctmle_g, V, W, folds
   # need to get n X K matrix of predictions from CV HAL 
   n <- length(W[,1])
   train_matrix <- combn(V, V-1)
+  min_idx <- which(all_fits[[full_hal_idx]]$fit$object$hal_lasso$glmnet.fit$lambda == 
+                    all_fits[[full_hal_idx]]$fit$object$hal_lasso$lambda.1se)
   all_out <- lapply(split(train_matrix,col(train_matrix)), function(tr){
     learner_idx <- cvma:::search_fits_for_learner(fits = all_fit_tasks, 
                                           y = "A", learner = which_ctmle_g, 
                                           training_folds = tr)
     this_g_matrix <- predict_alllambda_SL.hal9002(all_fits[[learner_idx]]$fit$object, 
-                                                  newdata = W[-which(folds %in% tr),,drop=FALSE])
+                                                  newdata = W[-which(folds %in% tr),,drop=FALSE],
+                                                  min_idx = min_idx)
     return(this_g_matrix)
   })
 
@@ -743,14 +819,15 @@ get_all_ates <- function(Y, W, A, V = 5, learners,
                                    cv_risk_fn = "cv_risk_sl_r2",
                                    family = binomial(),
                                    alpha = 0.05),
-                      which_dr_tmle = c("full_sl","cv_full_sl",
-                                        "SL.hal9002","cv_SL.hal9002"),
+                      which_dr_tmle = c("full_sl","cv_full_sl","full_dsl",
+                                        "cv_full_dsl", "SL.hal9002","cv_SL.hal9002"),
                       which_dr_iptw = c("SL.hal9002","cv_SL.hal9002",
                                         "full_sl", "cv_full_sl",
+                                        "full_dsl", "cv_full_dsl",
                                         "SL.gbm.caretMod"),
-                      which_Match = c("SL.hal9002","SL.glm","full_sl"),
+                      which_Match = c("SL.hal9002","SL.glm","full_sl","full_dsl"),
                       which_ctmle_g = "SL.hal9002",
-                      which_ctmle_Q = c("full_sl","cv_full_sl",
+                      which_ctmle_Q = c("full_sl","cv_full_sl","full_dsl","cv_full_dsl",
                                         "SL.hal9002","cv_SL.hal9002",
                                         "SL.glm")){
 	# estimate nuisance

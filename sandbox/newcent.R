@@ -36,38 +36,37 @@ library(cvma, lib.loc = "/home/dbenkese/R/x86_64-unknown-linux-gnu-library/3.2")
 library(hal9001, lib.loc = "/home/dbenkese/R/x86_64-unknown-linux-gnu-library/3.2")
 library(drtmle, lib.loc = "/home/dbenkese/R/x86_64-unknown-linux-gnu-library/3.2")
 library(SuperLearner)
-# full parm
-# ns <- c(200, 1000, 5000)
-ns <- c(200, 2000)
-min_R2 <- c(0.01, seq(0.101, 0.901, by = 0.1))
-max_R2 <- c(seq(0.1,0.9,0.1),0.99)
-mat_R2 <- cbind(min_R2, max_R2)
-bigB <- 1000
 
-# # simulation parameters
-parm <- expand.grid(seed=1:bigB,
-                    n=ns,
-                    range_R2 = split(mat_R2, row(mat_R2)))
+learners <- c("SL.hal9002",
+              "SL.glm",
+              "SL.bayesglm", 
+              "SL.earth",
+              "SL.step.interaction",
+              "SL.gam", 
+              "SL.dbarts.mod",
+              "SL.gbm.caretMod",
+              "SL.rf.caretMod",
+              "SL.rpart.caretMod", 
+              "SL.mean")
 
-# parm <- find_missing_files()
-# parm$r2 <- round(parm$r2,3)
-# # reformat r2 column
-# parm$r2_max <- NA
-# parm$r2_max[parm$r2 == 0.01] <- 0.1
-# parm$r2_max[parm$r2 == 0.101] <- 0.2
-# parm$r2_max[parm$r2 == 0.201] <- 0.3
-# parm$r2_max[parm$r2 == 0.301] <- 0.4
-# parm$r2_max[parm$r2 == 0.401] <- 0.5
-# parm$r2_max[parm$r2 == 0.501] <- 0.6
-# parm$r2_max[parm$r2 == 0.601] <- 0.7
-# parm$r2_max[parm$r2 == 0.701] <- 0.8
-# parm$r2_max[parm$r2 == 0.801] <- 0.90
-# parm$r2_max[parm$r2 == 0.901] <- 0.99
-# rangeR2 <- apply(parm, 1, function(x){ c(x[3], x[4]) })
-# rangeR2 <- split(rangeR2, col(rangeR2))
-# parm$range_R2 <- rangeR2
-# save(parm, file = "~/haltmle.sim/scratch/remain_sims.RData")
-# load("~/haltmle.sim/scratch/remain_sims.RData")
+V <- 10
+train_cols1 <- 1:V
+train_cols2 <- combn(V, V-1)
+train_cols3 <- combn(V, V-2)
+
+tasks <- c("fit_or","fit_ps")
+
+seeds <- 1:10000
+
+nuisance_parm <- expand.grid(
+                  learner = learners,
+                  train_cols = c(split(train_cols2, col(train_cols2)),
+                                 split(train_cols3), col(train_cols3),
+                                 train_cols1),
+                  seed = seeds, task = tasks)
+
+
+
 
 # directories to save in 
 saveDir <- "~/haltmle.sim/out/"
@@ -102,30 +101,41 @@ if (args[1] == 'run') {
     print(parm[i,])
 
     set.seed(parm$seed[i])
-
-    dat <- haltmle.sim:::makeRandomDataT(n = parm$n[i], maxD = 7,
-                                        # minObsA = 30,
+    dat <- haltmle.sim:::makeRandomData(n=parm$n[i], maxD = 8,
+                                        minObsA = 30,
                                         minR2 = parm$range_R2[[i]][1],
-                                        maxR2 = parm$range_R2[[i]][2]) 
+                                        maxR2 = parm$range_R2[[i]][2])    
+
+    dat <- haltmle.sim:::makeRandomDataT(n=100, maxD = 2,
+                                        # minObsA = 30,
+                                        minR2 = 0.05,
+                                        maxR2 = 0.95)
 
     save(dat, file=paste0(scratchDir,"draw_n=",parm$n[i],"_seed=",parm$seed[i],
                           "_r2=",parm$range_R2[[i]][1],".RData"))
     print("data saved")
 
-    algo <- c("SL.hal9002",
+    algo <- c("SL.hal9001",
               "SL.glm",
+              "SL.bayesglm", 
               "SL.earth",
               "SL.step.interaction",
+              "SL.gam", 
               "SL.dbarts.mod",
               "SL.gbm.caretMod",
               "SL.rf.caretMod",
               "SL.rpart.caretMod", 
-              "SL.mean")    
+              "SL.mean",
+              "SL.kernelKnn")
+    algo <- c("SL.glm","SL.hal9002")
     # fit super learner with all algorithms
     set.seed(parm$seed[i])
     dat$W <- data.frame(dat$W)
     colnames(dat$W) <- paste0("W",1:ncol(dat$W))
-
+    debug(estimate_nuisance)
+    debug(get_all_ates)
+    debug(get_ctmle_fit)
+    debug(predict_alllambda_SL.hal9002)
     out <- get_all_ates(Y = dat$Y$Y, A = dat$A$A, W = dat$W, 
                         V = 4, learners = algo, 
                         # remove_learner = "SL.hal9001",

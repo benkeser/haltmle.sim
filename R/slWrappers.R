@@ -20,7 +20,8 @@ SL.hal9002 <- function (Y, X, newX = NULL, degrees = NULL, family = stats::gauss
 }
 
 #' @export 
-predict_alllambda_SL.hal9002 <- function(object, newdata, ...) {
+predict_alllambda_SL.hal9002 <- function(object, newdata, min_idx = NULL, 
+                                         transform = TRUE, ...) {
   if (!is.matrix(newdata)) {
     new_data <- as.matrix(newdata)
   }
@@ -37,9 +38,18 @@ predict_alllambda_SL.hal9002 <- function(object, newdata, ...) {
   # preds <- sapply(object$hal_lasso$lambda, function(l){
   #   predict(object$hal_lasso, newx = pred_x_basis, 
   #                  s = l)})
+  if(is.null(min_idx)){
+    min_idx <- which(object$hal_lasso$glmnet.fit$lambda == object$hal_lasso$lambda.1se)
+  }
   n <- dim(pred_x_basis)[1]
-  preds <- cbind(rep(1, n), pred_x_basis) %*% rbind(object$hal_lasso$glmnet.fit$a0, object$hal_lasso$glmnet.fit$beta)
-  return(as.matrix(preds))
+  n_lambda <- length(object$hal_lasso$glmnet.fit$lambda)
+  preds <- as.matrix(cbind(rep(1, n), pred_x_basis) %*% rbind(object$hal_lasso$glmnet.fit$a0[min_idx:n_lambda], object$hal_lasso$glmnet.fit$beta[,min_idx:n_lambda]))
+  if(transform){
+    out <- apply(preds, 2, plogis)
+  }else{
+    out <- preds
+  }
+  return(out)
 }
 
 
