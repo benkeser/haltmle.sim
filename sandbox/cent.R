@@ -120,22 +120,15 @@ if (args[1] == 'run') {
               "SL.gbm.caretMod",
               "SL.rf.caretMod",
               "SL.rpart.caretMod", 
-              "SL.mean")    
+              "SL.mean")  
+    # algo <- c("SL.glm","SL.mean")  
     # fit super learner with all algorithms
     set.seed(parm$seed[i])
     dat$W <- data.frame(dat$W)
     colnames(dat$W) <- paste0("W",1:ncol(dat$W))
-
+    devtools::load_all("~/Dropbox/R/haltmle.sim/")
     out <- get_all_ates(Y = dat$Y$Y, A = dat$A$A, W = dat$W, 
-                        V = 4, learners = algo, 
-                        # remove_learner = "SL.hal9001",
-                        which_Match = algo,
-                        which_dr_tmle = algo,
-                        which_dr_iptw = algo,
-                        which_ctmle_g = "SL.hal9002")
-    
-
-    
+                        V = 5, learners = algo)   
 
     save(out, file=paste0(saveDir,"out_n=",parm$n[i],"_seed=",parm$seed[i],
                           "_r2=",parm$range_R2[[i]][1],".RData"))

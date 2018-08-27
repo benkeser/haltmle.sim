@@ -82,7 +82,6 @@ get_rm_sl <- function(task, Y, V, all_fit_tasks, all_fits, folds, sl_control, le
 get_ate_cv_Q_pred <- function(Y, V, all_fit_tasks, all_fits, all_sl, folds, 
                              sl_control, return_learner_fits = TRUE,
                              learners, remove_index = NULL, compute_superlearner = TRUE){
-	# 
   n <- length(Y)
 	train_matrix <- combn(V, V-1)
 	all_out <- lapply(split(train_matrix,col(train_matrix)), function(tr){
@@ -104,11 +103,15 @@ get_ate_cv_Q_pred <- function(Y, V, all_fit_tasks, all_fits, all_sl, folds,
     if(compute_superlearner){
   		sl_pred_setA <- do.call(sl_control$ensemble_fn, args = list(pred = all_pred_setA,
   		                                                            weight = all_sl[[sl_idx]]$sl_weight))
+      fastsl_pred_setA <- do.call(sl_control$ensemble_fn, args = list(pred = all_pred_setA,
+                                                                  weight = all_sl[[1]]$sl_weight))
     }else{
       sl_pred_setA <- NULL
+      fastsl_pred_setA <- NULL
     }
 		return(list(learner_pred = all_pred_setA,
-		            sl_pred = sl_pred_setA))
+		            sl_pred = sl_pred_setA,
+                fast_sl_pred = fastsl_pred_setA))
 	})
   	idx <- unlist(split(1:n, folds)[V:1], use.names = FALSE)
   	cv_learner_pred <- matrix(NA, nrow = 2*length(Y), 
@@ -133,15 +136,23 @@ get_ate_cv_Q_pred <- function(Y, V, all_fit_tasks, all_fits, all_sl, folds,
   }
 	if(compute_superlearner){
     cv_sl_pred_0 <- cv_sl_pred_1 <- rep(NA, length(Y))
+    fast_cv_sl_pred_0 <- fast_cv_sl_pred_1 <- rep(NA, length(Y))
     tmp <- lapply(all_out, "[[", "sl_pred") # list 2x 
     cv_sl_pred_0[idx] <- unlist(lapply(tmp, function(x){ nr <- length(x)/2; return(x[1:nr]) }), use.names = FALSE)
     cv_sl_pred_1[idx] <- unlist(lapply(tmp, function(x){ nr <- length(x)/2; return(x[(nr+1):(2*nr)]) }), use.names = FALSE)
     cv_sl_pred <- c(cv_sl_pred_0, cv_sl_pred_1)
+
+    tmp <- lapply(all_out, "[[", "fast_sl_pred") # list 2x 
+    fast_cv_sl_pred_0[idx] <- unlist(lapply(tmp, function(x){ nr <- length(x)/2; return(x[1:nr]) }), use.names = FALSE)
+    fast_cv_sl_pred_1[idx] <- unlist(lapply(tmp, function(x){ nr <- length(x)/2; return(x[(nr+1):(2*nr)]) }), use.names = FALSE)
+    fast_cv_sl_pred <- c(fast_cv_sl_pred_0, fast_cv_sl_pred_1)
   }else{
     cv_sl_pred <- NULL
+    fast_cv_sl_pred <- NULL
   }
     return(list(cv_learner_pred = cv_learner_pred,
-                cv_sl_pred = cv_sl_pred))
+                cv_sl_pred = cv_sl_pred,
+                fast_cv_sl_pred = fast_cv_sl_pred))
 }
 
 
@@ -253,12 +264,15 @@ get_ate_cv_g_pred <- function(A, V, all_fit_tasks, all_fits, all_sl, folds,
 		}, simplify = FALSE))
     if(compute_superlearner){
   		sl_pred_setA <- do.call(sl_control$ensemble_fn, args = list(pred = all_pred_setA,
-  		                                                            weight = all_sl[[sl_idx]]$sl_weight))
+                                                                  weight = all_sl[[sl_idx]]$sl_weight))
+      fast_sl_pred_setA <- do.call(sl_control$ensemble_fn, args = list(pred = all_pred_setA,
+  		                                                            weight = all_sl[[1]]$sl_weight))
     }else{
       sl_pred_setA <- NULL
     }
 		return(list(learner_pred = all_pred_setA,
-		            sl_pred = sl_pred_setA))
+		            sl_pred = sl_pred_setA,
+                fast_sl_pred = fast_sl_pred_setA))
 	})
   	
   ### !!!! NEED TO CHECK IF THIS IS RIGHT !!!! ####
@@ -274,13 +288,17 @@ get_ate_cv_g_pred <- function(A, V, all_fit_tasks, all_fits, all_sl, folds,
     cv_learner_pred[idx,] <- Reduce(c, lapply(all_out, "[[", "learner_pred"))
   }  
   if(compute_superlearner){
-	cv_sl_pred <- rep(NA, length(A))
-	cv_sl_pred[idx] <- Reduce(c, lapply(all_out, "[[", "sl_pred"))
+  cv_sl_pred <- rep(NA, length(A))
+  fast_cv_sl_pred <- rep(NA, length(A))
+  cv_sl_pred[idx] <- Reduce(c, lapply(all_out, "[[", "sl_pred"))	
+  fast_cv_sl_pred <- rep(NA, length(A))
+	fast_cv_sl_pred[idx] <- Reduce(c, lapply(all_out, "[[", "fast_sl_pred"))
   }else{
     cv_sl_pred <- NULL
   }
     return(list(cv_learner_pred = cv_learner_pred,
-                cv_sl_pred = cv_sl_pred))
+                cv_sl_pred = cv_sl_pred,
+                fast_cv_sl_pred = fast_cv_sl_pred))
 }
 
 
@@ -365,7 +383,7 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
       sl_pred <- do.call(sl_control_Q$ensemble_fn, args = list(pred = pred, weight = 
                                                              all_sl[[1]]$sl_weight))
       dsl_pred <- do.call(sl_control_Q$ensemble_fn, args = list(pred = pred, weight = 
-                                                             all_sl[[1]]$dsl_weight))
+                                                             all_dsl[[1]]$sl_weight))
     }
     # now try without a particular learner
     if(!is.null(remove_learner)){
@@ -417,9 +435,15 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
       Qbar_list$cv_full_sl <- data.frame(Q0W = cv_pred$cv_sl_pred[1:n],
                                      Q1W = cv_pred$cv_sl_pred[(n+1):(2*n)],
                                      QAW = as.numeric(ifelse(A == 0, cv_pred$cv_sl_pred[1:n], cv_pred$cv_sl_pred[(n+1):(2*n)])))
-      Qbar_list$cv_full_dsl <- data.frame(Q0W = cv_dpred$cv_sl_pred[1:n],
-                                     Q1W = cv_dpred$cv_sl_pred[(n+1):(2*n)],
-                                     QAW = as.numeric(ifelse(A == 0, cv_dpred$cv_sl_pred[1:n], cv_dpred$cv_sl_pred[(n+1):(2*n)])))
+      Qbar_list$cv_full_dsl <- data.frame(Q0W = cv_pred_dsl$cv_sl_pred[1:n],
+                                     Q1W = cv_pred_dsl$cv_sl_pred[(n+1):(2*n)],
+                                     QAW = as.numeric(ifelse(A == 0, cv_pred_dsl$cv_sl_pred[1:n], cv_pred_dsl$cv_sl_pred[(n+1):(2*n)])))
+      Qbar_list$fast_cv_full_sl <- data.frame(Q0W = cv_pred$fast_cv_sl_pred[1:n],
+                                     Q1W = cv_pred$fast_cv_sl_pred[(n+1):(2*n)],
+                                     QAW = as.numeric(ifelse(A == 0, cv_pred$fast_cv_sl_pred[1:n], cv_pred$fast_cv_sl_pred[(n+1):(2*n)])))
+      Qbar_list$fast_cv_full_dsl <- data.frame(Q0W = cv_pred_dsl$fast_cv_sl_pred[1:n],
+                                     Q1W = cv_pred_dsl$fast_cv_sl_pred[(n+1):(2*n)],
+                                     QAW = as.numeric(ifelse(A == 0, cv_pred_dsl$fast_cv_sl_pred[1:n], cv_pred_dsl$fast_cv_sl_pred[(n+1):(2*n)])))
       if(!is.null(remove_learner)){
   	    # hal super learner
   	    Qbar_list$rm_sl <- data.frame(Q0W = sl_pred_rm[1:n],
@@ -433,8 +457,14 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
                                        Q1W = cv_pred_rm$cv_sl_pred[(n+1):(2*n)],
                                        QAW = as.numeric(ifelse(A == 0, cv_pred_rm$cv_sl_pred[1:n], cv_pred_rm$cv_sl_pred[(n+1):(2*n)])))
         Qbar_list$cv_rm_dsl <- data.frame(Q0W = cv_dpred_rm$cv_sl_pred[1:n],
-  	                                   Q1W = cv_dpred_rm$cv_sl_pred[(n+1):(2*n)],
-  	                                   QAW = as.numeric(ifelse(A == 0, cv_dpred_rm$cv_sl_pred[1:n], cv_dpred_rm$cv_sl_pred[(n+1):(2*n)])))
+                                       Q1W = cv_dpred_rm$cv_sl_pred[(n+1):(2*n)],
+                                       QAW = as.numeric(ifelse(A == 0, cv_dpred_rm$cv_sl_pred[1:n], cv_dpred_rm$cv_sl_pred[(n+1):(2*n)])))
+        Qbar_list$fast_cv_rm_sl <- data.frame(Q0W = cv_pred_rm$fast_cv_sl_pred[1:n],
+                                       Q1W = cv_pred_rm$fast_cv_sl_pred[(n+1):(2*n)],
+                                       QAW = as.numeric(ifelse(A == 0, cv_pred_rm$fast_cv_sl_pred[1:n], cv_pred_rm$fast_cv_sl_pred[(n+1):(2*n)])))
+        Qbar_list$fast_cv_rm_dsl <- data.frame(Q0W = cv_dpred_rm$fast_cv_sl_pred[1:n],
+  	                                   Q1W = cv_dpred_rm$fast_cv_sl_pred[(n+1):(2*n)],
+  	                                   QAW = as.numeric(ifelse(A == 0, cv_dpred_rm$fast_cv_sl_pred[1:n], cv_dpred_rm$fast_cv_sl_pred[(n+1):(2*n)])))
       }
     }
     # add other predictions
@@ -461,9 +491,12 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
                               W = W, A = A, sl_control = sl_control_g)
 
     # get CTMLE fits
-    ctmle_g_fits <- get_ctmle_g_fits(all_fits = all_fits, all_fit_tasks = all_fit_tasks, 
-                                 which_ctmle_g = which_ctmle_g, W = W, V = V, folds = folds)
-
+    if(!is.null(which_ctmle_g)){
+      ctmle_g_fits <- get_ctmle_g_fits(all_fits = all_fits, all_fit_tasks = all_fit_tasks, 
+                                   which_ctmle_g = which_ctmle_g, W = W, V = V, folds = folds)
+    }else{
+      ctmle_g_fits <- NULL
+    }
 
 
     # all super learner weight-getting tasks
@@ -544,14 +577,19 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
       g_list$full_dsl <- data.frame(g1W = dsl_pred, g0W = 1 - dsl_pred)
       # cv hal super learner
       g_list$cv_full_sl <- data.frame(g1W = cv_pred$cv_sl_pred, g0W = 1 - cv_pred$cv_sl_pred)
-      g_list$cv_full_dsl <- data.frame(g1W = cv_pred$cv_dsl_pred, g0W = 1 - cv_pred$cv_dsl_pred)
+      g_list$cv_full_dsl <- data.frame(g1W = cv_dpred$cv_sl_pred, g0W = 1 - cv_dpred$cv_sl_pred)
+      g_list$fast_cv_full_sl <- data.frame(g1W = cv_pred$fast_cv_sl_pred, g0W = 1 - cv_pred$fast_cv_sl_pred)
+      g_list$fast_cv_full_dsl <- data.frame(g1W = cv_dpred$fast_cv_sl_pred, g0W = 1 - cv_dpred$fast_cv_sl_pred)
       # hal super learner
       if(!is.null(remove_learner)){
         g_list$sl <- data.frame(g1W = sl_pred_rm, g0W = 1 - sl_pred_rm)
   	    g_list$dsl <- data.frame(g1W = dsl_pred_rm, g0W = 1 - dsl_pred_rm)
-  	    # cv hal super learner
+        # cv hal super learner
         g_list$cv_sl <- data.frame(g1W = cv_pred_rm$cv_sl_pred, g0W = 1 - cv_pred_rm$cv_sl_pred)
-  	    g_list$cv_dsl <- data.frame(g1W = cv_dpred_rm$cv_sl_pred, g0W = 1 - cv_dpred_rm$cv_sl_pred)
+        g_list$cv_dsl <- data.frame(g1W = cv_dpred_rm$cv_sl_pred, g0W = 1 - cv_dpred_rm$cv_sl_pred)
+ 	    # cv hal super learner
+        g_list$fast_cv_sl <- data.frame(g1W = cv_pred_rm$fast_cv_sl_pred, g0W = 1 - cv_pred_rm$fast_cv_sl_pred)
+  	    g_list$fast_cv_dsl <- data.frame(g1W = cv_dpred_rm$fast_cv_sl_pred, g0W = 1 - cv_dpred_rm$fast_cv_sl_pred)
       }
     }
     # add other predictions
@@ -820,14 +858,13 @@ get_all_ates <- function(Y, W, A, V = 5, learners,
                                    family = binomial(),
                                    alpha = 0.05),
                       which_dr_tmle = c("full_sl","cv_full_sl","full_dsl",
-                                        "cv_full_dsl", "SL.hal9002","cv_SL.hal9002"),
-                      which_dr_iptw = c("SL.hal9002","cv_SL.hal9002",
-                                        "full_sl", "cv_full_sl",
-                                        "full_dsl", "cv_full_dsl",
-                                        "SL.gbm.caretMod"),
+                                        "cv_full_dsl"),
+                      which_dr_iptw = c("full_sl", "cv_full_sl", "full_dsl",
+                                        "cv_full_dsl", "SL.gbm.caretMod"),
                       which_Match = c("SL.hal9002","SL.glm","full_sl","full_dsl"),
                       which_ctmle_g = "SL.hal9002",
                       which_ctmle_Q = c("full_sl","cv_full_sl","full_dsl","cv_full_dsl",
+                                        "fast_cv_full_sl","fast_cv_full_dsl",
                                         "SL.hal9002","cv_SL.hal9002",
                                         "SL.glm")){
 	# estimate nuisance
@@ -885,9 +922,12 @@ get_all_ates <- function(Y, W, A, V = 5, learners,
                                   FUN = c, SIMPLIFY = FALSE)
 
   cat("Getting CTMLEs \n")
-  ctmle_results <- get_ctmle_results(W=W, A = A, Y = Y, V = V, folds = folds, Qs = nuisance$Qbar[which_ctmle_Q],
-                                     g = nuisance$ctmle_g_fits, n = length(A), gtol = gtol)
-
+  if(!is.null(which_ctmle_g)){
+    ctmle_results <- get_ctmle_results(W=W, A = A, Y = Y, V = V, folds = folds, Qs = nuisance$Qbar[which_ctmle_Q],
+                                       g = nuisance$ctmle_g_fits, n = length(A), gtol = gtol)
+  }else{
+    ctmle_results <- NULL
+  }
 
   cat("Getting IPTW/GCOMP \n")
   # get iptw estimators
