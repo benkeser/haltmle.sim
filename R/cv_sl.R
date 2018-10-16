@@ -342,7 +342,7 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
                                         fold_fits = fold_fits)
 
     # NOTE: could be future_lapply for parallelization
-    all_fits <- future.apply::future_lapply(all_fit_tasks, FUN = get_or_fit, folds = folds, 
+    all_fits <- lapply(all_fit_tasks, FUN = get_or_fit, folds = folds, 
                               W = W, A = A, Y = Y, sl_control = sl_control_Q)
 
     # all super learner weight-getting tasks
@@ -487,7 +487,7 @@ estimate_nuisance <- function(Y, W, A, V = 5, learners,
 
     # NOTE: could be future_lapply for parallelization
     # NOTE: Over writes all_fits for outcome regression -- might want to change later
-    all_fits <- future.apply::future_lapply(all_fit_tasks, FUN = get_ps_fit, folds = folds, 
+    all_fits <- lapply(all_fit_tasks, FUN = get_ps_fit, folds = folds, 
                               W = W, A = A, sl_control = sl_control_g)
 
     # get CTMLE fits
